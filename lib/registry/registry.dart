@@ -75,7 +75,7 @@ class RegistryService {
     final existingEntry = getFromDB(sre.pk, sre.dk);
     if (existingEntry != null) {
       if (existingEntry.revision >= sre.revision) {
-        broadcastEntry(existingEntry, null);
+        // TODO broadcastEntry(existingEntry, null);
 
         throw 'Revision number too low';
       }
