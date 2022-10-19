@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:base_codecs/base_codecs.dart';
 import 'package:cryptography/helpers.dart';
+import 'package:s5_server/constants.dart';
 import 'package:tint/tint.dart';
 import 'package:toml/toml.dart';
 
@@ -23,7 +24,7 @@ void main(List<String> arguments) async {
   }
 
   logger.info('');
-  logger.info('s5-dart'.green().bold() + ' ' + 'v0.2'.red().bold());
+  logger.info('s5-dart'.green().bold() + ' ' + 'v$nodeVersion'.red().bold());
   logger.info('');
 
   if (file
