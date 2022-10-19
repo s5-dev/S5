@@ -1,0 +1,23 @@
+name = "my-s5-node"
+
+[keypair]
+seed = "AUTOMATICALLY_GENERATED_ON_FIRST_START"
+
+[cache] # Caches file objects that are uploaded, streamed or downloaded
+path = "/tmp/s5/cache"
+
+[database] # Caches peer and object data (small)
+path = "data/hive"
+
+[http.api]
+port = 5522
+
+[http.api.delete]
+enabled = false
+
+[network.peers]
+initial = [
+  'tcp://z2DWXhEypZqpsEXRY7LjzXCoXeVfP7z8uPUYjeKfnJuJV3A@95.143.172.232:43221', # uber.space
+  'tcp://z2DfewUEBF5TnHjMXRyZCQobMirWXJqa3JCeb36UyaHLYhC@116.203.139.40:4444', # hetzner
+  'tcp://z2DVYoNRUFknwbFPz74j6sz8dZ1LosYzQ8XjjSCNcGHajcC@168.119.116.125:4444', # test node
+]

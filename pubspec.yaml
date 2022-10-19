@@ -1,0 +1,41 @@
+name: s5_server
+description: proof of concept implementation of a new storage network
+publish_to: none
+version: 0.3.0
+
+environment:
+  sdk: ">=2.18.2 <3.0.0"
+
+dependencies:
+  alfred:
+    git:
+      url: https://github.com/redsolver/alfred.git
+  belatuk_range_header: ^5.0.0
+  async: ^2.9.0
+  base_codecs: ^1.0.1
+  convert: ^3.0.2
+  crypto: ^3.0.2
+  http: ^0.13.5
+  messagepack: ^0.2.1
+  minio:
+    git:
+      url: https://github.com/redsolver/minio-dart.git
+  path: ^1.8.2
+  hive: ^2.2.3
+  toml: ^0.13.1
+  cryptography: ^2.0.5
+  mime: ^1.0.2
+  web_socket_channel: ^2.2.0
+  thirds: ^0.2.0-alpha.1
+  tint: ^2.0.0
+  filesize:
+    git: https://github.com/redsolver/filesize.git
+  string_scanner: ^1.1.1
+  pool: ^1.5.1
+  # ! disabled because the arweave-dart library is licensed GPL-2.0 and this repo is MIT
+  # arweave:
+  #   git: https://github.com/ardriveapp/arweave-dart.git
+
+dev_dependencies:
+  lints: ^2.0.0
+  test: ^1.16.0
