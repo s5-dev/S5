@@ -5,36 +5,38 @@ import 'dart:typed_data';
 
 import 'package:belatuk_range_header/belatuk_range_header.dart';
 import 'package:http/http.dart';
+import 'package:lib5/lib5.dart';
+import 'package:lib5/util.dart';
 import 'package:path/path.dart';
 
 import 'package:s5_server/download/uri_provider.dart';
 import 'package:s5_server/logger/base.dart';
-import 'package:s5_server/model/metadata.dart';
-import 'package:s5_server/util/bytes.dart';
+import 'package:s5_server/node.dart';
 
 final httpClient = Client();
 
 Future handleChunkedFile(
   HttpRequest req,
   HttpResponse res,
-  DownloadUriProvider dlUriProvider,
-  FileMetadata metadata, {
+  Multihash hash,
+  int totalSize,
+  DownloadUriProvider dlUriProvider, {
   required String cachePath,
   required Logger logger,
+  required S5Node node,
 }) async {
-  final totalSize = metadata.size;
-
   final rangeHeader = req.headers.value('range');
 
   if (rangeHeader?.startsWith('bytes=') != true) {
     res.headers.add('content-length', totalSize);
     await res.addStream(openRead(
       dlUriProvider,
-      metadata,
-      0,
-      totalSize,
+      hash: hash,
+      start: 0,
+      totalSize: totalSize,
       cachePath: cachePath,
       logger: logger,
+      node: node,
     ));
     return res.close();
   } else {
@@ -63,11 +65,12 @@ Future handleChunkedFile(
 
         await res.addStream(openRead(
           dlUriProvider,
-          metadata,
-          0,
-          totalSize,
+          hash: hash,
+          start: 0,
+          totalSize: totalSize,
           cachePath: cachePath,
           logger: logger,
+          node: node,
         ));
         return res.close();
       }
@@ -97,21 +100,23 @@ Future handleChunkedFile(
           len = total;
           stream = openRead(
             dlUriProvider,
-            metadata,
-            0,
-            totalSize,
+            hash: hash,
+            start: 0,
+            totalSize: totalSize,
             cachePath: cachePath,
             logger: logger,
+            node: node,
           );
         } else {
           len = item.end + 1;
           stream = openRead(
             dlUriProvider,
-            metadata,
-            0,
-            item.end + 1,
+            hash: hash,
+            start: 0,
+            totalSize: item.end + 1,
             cachePath: cachePath,
             logger: logger,
+            node: node,
           );
         }
       } else {
@@ -119,21 +124,23 @@ Future handleChunkedFile(
           len = total - item.start;
           stream = openRead(
             dlUriProvider,
-            metadata,
-            item.start,
-            totalSize,
+            hash: hash,
+            start: item.start,
+            totalSize: totalSize,
             cachePath: cachePath,
             logger: logger,
+            node: node,
           );
         } else {
           len = item.end - item.start + 1;
           stream = openRead(
             dlUriProvider,
-            metadata,
-            item.start,
-            item.end + 1,
+            hash: hash,
+            start: item.start,
+            totalSize: item.end + 1,
             cachePath: cachePath,
             logger: logger,
+            node: node,
           );
         }
       }
@@ -150,23 +157,56 @@ Future handleChunkedFile(
   }
 }
 
+final merkleTreeCache = <String, TreeMetadata>{};
+
+class TreeMetadata {
+  final Uint8List baoBytes;
+
+  TreeMetadata(this.baoBytes);
+}
+
 Map<String, Completer> downloadingChunkLock = {};
 
 Stream<List<int>> openRead(
-  DownloadUriProvider dlUriProvider,
-  FileMetadata metadata,
-  int start,
-  int totalSize, {
+  DownloadUriProvider dlUriProvider, {
+  required Multihash hash,
+  required int start,
+  required int totalSize,
   required String cachePath,
   required Logger logger,
+  required S5Node node,
 }) async* {
-  final chunkSize = metadata.chunkSize;
+  // TODO Read chunkSize from tree metadata
+  final chunkSize = 256 * 1024;
 
   int chunk = (start / chunkSize).floor();
 
   int offset = start % chunkSize;
 
   DownloadURI downloadUri = await dlUriProvider.next();
+
+  if (!merkleTreeCache.containsKey(downloadUri.uri.toString())) {
+    final res = await httpClient.get(downloadUri.uri, headers: {
+      'range': 'bytes=$totalSize-',
+    });
+    final meta = res.bodyBytes.sublist(res.bodyBytes.length - 16);
+
+    final baoLength = decodeEndian(meta.sublist(0, 8));
+
+    if ((res.bodyBytes.length - 16) != baoLength) {
+      throw 'Invalid length';
+    }
+
+    final baoBytes = res.bodyBytes.sublist(
+      0,
+      baoLength,
+    );
+
+    // TODO Verify bao bytes early
+    merkleTreeCache[downloadUri.uri.toString()] = TreeMetadata(baoBytes);
+  }
+
+  final mtree = merkleTreeCache[downloadUri.uri.toString()]!;
 
   StreamSubscription? sub;
 
@@ -176,18 +216,15 @@ Stream<List<int>> openRead(
 
   bool isDone = false;
 
-  final outDir = Directory(join(
-    cachePath,
-    metadata.contentHash.toBase64Url(),
-  ));
+  final cacheDir = Directory(join(cachePath, hash.toBase32()));
 
-  outDir.createSync(recursive: true);
+  cacheDir.createSync(recursive: true);
 
   while (start < totalSize) {
-    final chunkCacheFile = File(join(outDir.path, chunk.toString()));
+    final chunkCacheFile = File(join(cacheDir.path, '$chunk'));
 
     if (!chunkCacheFile.existsSync()) {
-      final chunkLockKey = '${metadata.contentHash.toBase64Url()}-$chunk';
+      final chunkLockKey = '${hash.toBase64Url()}-$chunk';
 
       if (downloadingChunkLock.containsKey(chunkLockKey)) {
         logger.verbose('[chunk] wait $chunk');
@@ -217,11 +254,11 @@ Stream<List<int>> openRead(
               logger.verbose('[chunk] send http range request');
               final request = Request('GET', downloadUri.uri);
 
-              request.headers['range'] = 'bytes=$encStartByte-';
+              request.headers['range'] = 'bytes=$encStartByte-$totalSize';
 
               final response = await httpClient.send(request);
 
-              if (response.statusCode != 206) {
+              if (![200, 206].contains(response.statusCode)) {
                 throw 'HTTP ${response.statusCode}';
               }
 
@@ -272,12 +309,14 @@ Stream<List<int>> openRead(
               downloadedEncData.removeRange(0, (chunkSize));
             }
 
-            final chunkHash = metadata.chunkHashes[chunk];
-
-            final isValid = ensureIntegrity(chunkHash, bytes);
-
-            if (!isValid) {
-              throw 'Integrity verification failed';
+            final res = await node.rust.verifyIntegrity(
+              chunkBytes: bytes,
+              offset: chunk * chunkSize,
+              baoOutboardBytes: mtree.baoBytes,
+              blake3Hash: hash.hashBytes,
+            );
+            if (res != 1) {
+              throw 'Invalid bytes';
             }
 
             dlUriProvider.upvote(downloadUri);

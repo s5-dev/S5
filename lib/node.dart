@@ -4,10 +4,11 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:convert/convert.dart';
-import 'package:crypto/crypto.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
+import 'package:lib5/constants.dart';
+import 'package:lib5/lib5.dart';
+import 'package:lib5/util.dart';
 import 'package:messagepack/messagepack.dart';
 import 'package:mime/mime.dart';
 import 'package:minio/minio.dart';
@@ -15,34 +16,38 @@ import 'package:path/path.dart';
 import 'package:pool/pool.dart';
 import 'package:tint/tint.dart';
 
-import 'package:s5_server/crypto/blake3.dart';
 import 'package:s5_server/download/uri_provider.dart';
 import 'package:s5_server/http_api/http_api.dart';
 import 'package:s5_server/logger/base.dart';
-import 'package:s5_server/model/cid.dart';
-import 'package:s5_server/registry/registry.dart';
+import 'package:s5_server/model/node_id.dart';
+import 'package:s5_server/rust/bridge_definitions.dart';
+import 'package:s5_server/service/accounts.dart';
 import 'package:s5_server/service/cache_cleaner.dart';
 import 'package:s5_server/service/p2p.dart';
+import 'package:s5_server/service/registry.dart';
 import 'package:s5_server/store/local.dart';
 
+import 'accounts/user.dart';
 import 'constants.dart';
-import 'crypto/ed25519.dart';
-import 'model/file_upload_result.dart';
-import 'model/metadata.dart';
-import 'model/multihash.dart';
 import 'store/base.dart';
 import 'store/s3.dart';
-import 'util/bytes.dart';
 
 class S5Node {
   final Map<String, dynamic> config;
 
   final Logger logger;
+  final Rust rust;
+
+  CryptoImplementation crypto;
 
   S5Node(
-    this.config,
-    this.logger,
-  );
+    this.config, {
+    required this.logger,
+    required this.rust,
+    required this.crypto,
+  });
+
+  late final String cachePath;
 
   final client = Client();
 
@@ -50,54 +55,41 @@ class S5Node {
 
   final rawFileUploadPool = Pool(16);
 
-  final metadataCache = <String, Metadata>{};
+  final metadataCache = <Multihash, Metadata>{};
 
   ObjectStore? store;
   late bool exposeStore;
 
+  AccountsService? accounts;
+
   late final RegistryService registry;
   late final P2PService p2p;
 
-  bool checkForB3CLI() {
-    try {
-      final res = Process.runSync('b3sum', ['--version']);
-      return res.exitCode == 0;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  late bool b3SumCliAvailable;
-
   Future<void> start() async {
-    Hive.init(config['database']['path']);
+    if (config['database']?['path'] != null) {
+      Hive.init(config['database']['path']);
+    }
 
-    objectsBox = await Hive.openBox('objects');
+    objectsBox = await Hive.openBox('s5-objects');
 
     p2p = P2PService(this);
 
-    p2p.nodeKeyPair = await ed25519.newKeyPairFromSeed(
-      sha512256.convert(utf8.encode(config['keypair']['seed'])).bytes,
+    p2p.nodeKeyPair = await crypto.newKeyPairEd25519(
+      seed: base64Url.decode(config['keypair']['seed']),
     );
 
     await p2p.init();
 
-    logger.info('${'NODE ID'.bold()}: ${p2p.localNodeId.green()}');
+    logger.info('${'NODE ID'.bold()}: ${p2p.localNodeId.toString().green()}');
 
     logger.info('');
-
-    b3SumCliAvailable = checkForB3CLI();
-
-    if (b3SumCliAvailable) {
-      logger.info('using b3sum CLI for improved hash performance'.green());
-    }
 
     runObjectGarbageCollector();
 
     registry = RegistryService(this);
     await registry.init();
 
-    final cachePath = config['cache']['path']!;
+    cachePath = config['cache']['path']!;
 
     final cacheCleaner = CacheCleaner(Directory(cachePath), logger);
 
@@ -107,9 +99,13 @@ class S5Node {
 
     final s3Config = config['store']?['s3'];
     final localConfig = config['store']?['local'];
+    final siaConfig = config['store']?['sia'];
     final arweaveConfig = config['store']?['arweave'];
 
-    if (s3Config != null && localConfig != null && arweaveConfig != null) {
+    if (s3Config != null &&
+        localConfig != null &&
+        arweaveConfig != null &&
+        siaConfig != null) {
       throw 'Only one store can be active at the same time';
     }
 
@@ -149,14 +145,32 @@ class S5Node {
         localConfig['http'],
       );
     }
+/*     if (siaConfig != null) {
+      store = SiaObjectStore(
+        siaConfig['renterd_api_addr']!,
+        siaConfig['renterd_api_password']!,
+        siaConfig['http'],
+        crypto: crypto,
+      );
+    } */
 
     await p2p.start();
+
+    final accountsConfig = config['accounts'];
+    if (accountsConfig?['enabled'] == true) {
+      accounts = AccountsService(
+        accountsConfig,
+        logger: logger,
+        crypto: crypto,
+      );
+      await accounts!.init();
+    }
 
     final httpAPIServer = HttpAPIServer(this);
 
     await httpAPIServer.start(cachePath);
 
-    runStatsService();
+    // runStatsService();
   }
 
   void runStatsService() {
@@ -164,8 +178,6 @@ class S5Node {
 
     String? lastState;
     Stream.periodic(Duration(seconds: 10)).listen((event) async {
-      final dk = Uint8List(32);
-
       final str = json.encode(
         {
           'name': config['name'],
@@ -186,8 +198,6 @@ class S5Node {
       ));
       registry.setEntryHelper(
         p2p.nodeKeyPair,
-        p2p.nodeIdBinary,
-        dk,
         cid.toRegistryEntry(),
       );
     });
@@ -220,7 +230,9 @@ class S5Node {
             .get(dlUri.uri)
             .timeout(Duration(seconds: 30)); // TODO Adjust timeout
 
-        if (!ensureIntegrity(hash, res.bodyBytes)) {
+        final resHash = await rust.hashBlake3(input: res.bodyBytes);
+
+        if (!areBytesEqual(hash.hashBytes, resHash)) {
           throw 'Integrity verification failed';
         }
         dlUriProvider.upvote(dlUri);
@@ -307,23 +319,31 @@ class S5Node {
         .toList();
   }
 
-  void addDownloadUri(Multihash hash, String nodeId, String url, int ttl) {
+  void addDownloadUri(Multihash hash, NodeID nodeId, String url, int ttl) {
     final val = objectsBox.get(hash.toBase64Url()) ?? {};
-    val[nodeId] = {
+    val[nodeId.toBase58()] = {
       'uri': url,
       'ttl': ttl,
     };
     objectsBox.put(hash.toBase64Url(), val);
   }
 
-  Map<String, Uri> getDownloadUrisFromDB(Multihash hash) {
-    final uris = <String, Uri>{};
+  Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
+    if (accounts == null) {
+      // TODO Return "default user"
+      return AuthResponse(user: null, denied: false, error: null);
+    }
+    return accounts!.checkAuth(req, scope);
+  }
+
+  Map<NodeID, Uri> getDownloadUrisFromDB(Multihash hash) {
+    final uris = <NodeID, Uri>{};
     final val = objectsBox.get(hash.toBase64Url()) ?? {};
     final ts = DateTime.now().millisecondsSinceEpoch;
     for (final e in val.entries) {
       if (e.value['ttl'] < ts) {
       } else {
-        uris[e.key] = Uri.parse(
+        uris[NodeID.decode(e.key)] = Uri.parse(
           e.value['uri'],
         );
       }
@@ -347,34 +367,6 @@ class S5Node {
     }
   }
 
-  Future<String> uploadMemoryFile({
-    required String filename,
-    required String? contentType,
-    required Uint8List data,
-  }) async {
-    final res = await calculateFileMetadata(
-      size: data.length,
-      stream: Stream.value(data),
-      filename: filename,
-      contentType: (contentType != 'application/octet-stream')
-          ? contentType
-          : lookupMimeType(
-                filename,
-                headerBytes: data.sublist(0, 32),
-              ) ??
-              'application/octet-stream',
-    );
-
-    await store!.put(res.metadataHash, Stream.value(res.metadata));
-
-    await store!.put(
-      res.fileContentHash,
-      Stream.value(data),
-    );
-
-    return CID(cidTypeMetadataFile, res.metadataHash).encode();
-  }
-
   Future<CID> uploadMemoryDirectory(
     Map<String, Uint8List> paths, {
     String? dirname,
@@ -387,6 +379,8 @@ class S5Node {
     p.packInt(metadataTypeDirectory);
 
     p.packString(dirname);
+
+    p.packMapLength(0);
 
     p.packListLength(tryFiles?.length ?? 0);
 
@@ -422,8 +416,7 @@ class S5Node {
     for (final path in paths.keys) {
       final bytes = paths[path]!;
       p.packString(path);
-      p.packBinary(cids[path]!.toBinary());
-      p.packInt(bytes.length);
+      p.packBinary(cids[path]!.toBytes());
       p.packString(
         lookupMimeType(
           path.split('/').last,
@@ -440,20 +433,6 @@ class S5Node {
   Future<void> deleteFile(CID cid) async {
     if (cid.type == cidTypeRaw) {
       await deleteHash(cid.hash);
-    } else if (cid.type == cidTypeMetadataFile) {
-      if (!await store!.contains(cid.hash)) {
-        return;
-      }
-      final metadata = await getMetadataByCID(cid);
-      if (metadata is! FileMetadata) {
-        throw 'Can\'t delete this type of metadata';
-      }
-
-      await deleteHash(metadata.contentHash);
-
-      await deleteHash(cid.hash);
-
-      metadataCache.remove(cid.hash.key);
     } else {
       throw 'Can\'t delete this type of CID';
     }
@@ -464,27 +443,35 @@ class S5Node {
     await store?.delete(hash);
   }
 
-  Future<void> pinFile(CID cid) async {
+  Future<void> pinFile(CID cid, {User? user}) async {
     if (cid.type == cidTypeRaw) {
-      await pinHash(cid.hash);
-    } else if (cid.type == cidTypeMetadataFile) {
-      // TODO Cache metadata when fetching it here
-      await pinHash(cid.hash);
-
-      final metadata = await getMetadataByCID(cid) as FileMetadata;
-
-      await pinHash(metadata.contentHash);
+      await pinHash(cid.hash, user: user);
     } else {
       throw 'Can\'t pin this type of CID';
     }
   }
 
-  Future<void> pinHash(Multihash hash) async {
+  Future<void> pinHash(Multihash hash, {User? user}) async {
     if (await store!.contains(hash)) {
+      if (user != null) {
+        await accounts!.addObjectPinToUser(
+          user: user,
+          hash: hash,
+          size: 0,
+        );
+      }
       return;
     }
     final bytes = await downloadBytesByHash(hash);
     await store!.put(hash, Stream.value(bytes));
+
+    if (user != null) {
+      await accounts!.addObjectPinToUser(
+        user: user,
+        hash: hash,
+        size: bytes.length,
+      );
+    }
   }
 
   Future<Metadata> getMetadataByCID(CID cid) async {
@@ -492,39 +479,55 @@ class S5Node {
 
     late final Metadata metadata;
 
-    if (metadataCache.containsKey(hash.key)) {
-      metadata = metadataCache[hash.key]!;
+    if (metadataCache.containsKey(hash)) {
+      metadata = metadataCache[hash]!;
     } else {
       final bytes = await downloadBytesByHash(hash);
-      if (cid.type == cidTypeMetadataFile) {
-        metadata = decodeFileMetadata(bytes);
+
+      if (cid.type == cidTypeMetadataMedia) {
+        metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
       } else if (cid.type == cidTypeMetadataDirectory) {
-        metadata = decodeDirectoryMetadata(bytes);
+        metadata = deserializeDirectoryMetadata(bytes);
       } else {
         throw 'Unsupported metadata format';
       }
-      metadataCache[hash.key] = metadata;
+      metadataCache[hash] = metadata;
     }
     return metadata;
   }
 
   Future<CID> uploadRawFile(Uint8List data) async {
-    if (data.length > 16 * 1024 * 1024) {
-      throw 'Raw files only support a maximum size of 16 MiB';
+    if (data.length > 32 * 1024 * 1024) {
+      throw 'This API only supports a maximum size of 32 MiB';
     }
-    final hash = Multihash(Uint8List.fromList(mhashBlake3 + BLAKE3.hash(data)));
+
+    final baoResult = await rust.hashBaoMemory(
+      bytes: data,
+    );
+
+    final hash = Multihash(
+      Uint8List.fromList(
+        [mhashBlake3Default] + baoResult.hash,
+      ),
+    );
 
     await store!.put(
       hash,
-      Stream.value(data),
+      _uploadRawStream(
+        Stream.value(data),
+        baoResult,
+        data.length,
+      ),
     );
 
-    return CID(cidTypeRaw, hash);
+    return CID(
+      cidTypeRaw,
+      hash,
+      size: data.length,
+    );
   }
 
   Future<CID> uploadLocalFile(File file) async {
-    final filename = basename(file.path);
-
 /*     if (store!.canPutAsync) {
       logger.verbose('using async upload strategy');
 
@@ -563,215 +566,68 @@ class S5Node {
       return CID(cidTypeMetadata, res.metadataHash).encode();
     } else { */
 
-    final res = await calculateFileMetadata(
-      size: file.lengthSync(),
-      stream: file.openRead(),
-      filename: filename,
-      contentType: lookupMimeType(
-        filename,
-        headerBytes: await file.openRead(0, 32).single,
-      ),
-      file: file,
-    );
+    final size = file.lengthSync();
 
-    await store!.put(res.metadataHash, Stream.value(res.metadata));
+    final baoResult = await rust.hashBaoFile(
+      path: file.path,
+    );
+    final hash = Multihash(
+      Uint8List.fromList(
+        [mhashBlake3Default] + baoResult.hash,
+      ),
+    );
 
     await store!.put(
-      res.fileContentHash,
+      hash,
+      _uploadRawFile(file, baoResult, size),
+    );
+
+    return CID(
+      cidTypeRaw,
+      hash,
+      size: size,
+    );
+  }
+
+  Stream<Uint8List> _uploadRawFile(
+    File file,
+    BaoResult baoResult,
+    int size,
+  ) {
+    return _uploadRawStream(
       file.openRead().map((event) => Uint8List.fromList(event)),
-    );
-
-    return CID(cidTypeMetadataFile, res.metadataHash);
-  }
-
-  Future<FileUploadResult> calculateFileMetadata({
-    required int size,
-    required Stream<List<int>> stream,
-    String? filename,
-    String? contentType,
-    File? file,
-  }) async {
-    final p = Packer();
-
-    p.packInt(metadataMagicByte);
-
-    p.packInt(metadataTypeFile);
-
-    p.packInt(size);
-
-    p.packString(filename);
-    p.packString(contentType);
-
-    p.packInt(defaultChunkSize);
-
-    p.packBinary(mhashBlake3);
-
-    final hashes = <int>[];
-
-    final Uint8List fullHash;
-
-    if (b3SumCliAvailable && file != null) {
-      Uint8List hashFromStdout(String s) {
-        final list = hex.decode(s.split(' ').first);
-        if (list.length != 32) {
-          throw 'Invalid hash length';
-        }
-        return Uint8List.fromList(list);
-      }
-
-      final fullHashRes = await Process.run('b3sum', [file.path]);
-
-      fullHash = hashFromStdout(fullHashRes.stdout);
-
-      final queue = <int>[];
-
-      Future<void> calculateHash() async {
-        final end = min(queue.length, defaultChunkSize);
-
-        final hash = BLAKE3.hash(Uint8List.fromList(queue.sublist(0, end)));
-
-        hashes.addAll(hash);
-
-        queue.removeRange(0, end);
-      }
-
-      await for (final chunk in stream) {
-        queue.addAll(chunk);
-        while (queue.length >= defaultChunkSize) {
-          await calculateHash();
-        }
-      }
-      if (queue.isNotEmpty) {
-        await calculateHash();
-      }
-    } else {
-      final queue = <int>[];
-
-      final output = Uint8List(32);
-
-      final ctx = HashContext();
-
-      ctx.reset();
-
-      void calculateHash() {
-        final end = min(queue.length, defaultChunkSize);
-
-        final hash = BLAKE3.hash(Uint8List.fromList(queue.sublist(0, end)));
-
-        hashes.addAll(hash);
-
-        queue.removeRange(0, end);
-      }
-
-      await for (final chunk in stream) {
-        ctx.update(Uint8List.fromList(chunk));
-
-        queue.addAll(chunk);
-        while (queue.length >= defaultChunkSize) {
-          calculateHash();
-        }
-      }
-      if (queue.isNotEmpty) {
-        calculateHash();
-      }
-
-      ctx.finalize(output);
-      fullHash = output;
-    }
-
-    p.packBinary(fullHash);
-
-    p.packBinary(hashes);
-    final metadata = p.takeBytes();
-
-    return FileUploadResult(
-      fileContentHash: Multihash(Uint8List.fromList(mhashBlake3 + fullHash)),
-      metadataHash:
-          Multihash(Uint8List.fromList(mhashBlake3 + BLAKE3.hash(metadata))),
-      metadata: metadata,
+      baoResult,
+      size,
     );
   }
 
-  FileMetadata decodeFileMetadata(Uint8List bytes) {
-    final u = Unpacker(bytes);
+  Stream<Uint8List> _uploadRawStream(
+    Stream<Uint8List> stream,
+    BaoResult baoResult,
+    int size,
+  ) async* {
+    yield* stream;
 
-    final magicByte = u.unpackInt();
-    if (magicByte != metadataMagicByte) {
-      throw 'Invalid metadata: Unsupported magic byte';
-    }
-    final typeAndVersion = u.unpackInt();
-    if (typeAndVersion != metadataTypeFile) {
-      throw 'Invalid metadata: Wrong metadata type';
-    }
-    final size = u.unpackInt();
-
-    final filename = u.unpackString();
-    final contentType = u.unpackString();
-
-    final chunkSize = u.unpackInt();
-
-    final mhashPrefix = u.unpackBinary();
-    final contentHash = Multihash(
-      Uint8List.fromList(mhashPrefix + u.unpackBinary()),
-    );
-
-    final chunkHashes = <Multihash>[];
-
-    final bin = u.unpackBinary();
-
-    for (int i = 0; i < bin.length; i += 32) {
-      chunkHashes.add(
-        Multihash(
-          Uint8List.fromList(mhashPrefix + bin.sublist(i, i + 32)),
-        ),
-      );
+    if (size <= defaultChunkSize) {
+      return;
     }
 
-    return FileMetadata(
-      contentHash: contentHash,
-      size: size ?? 0,
-      contentType: contentType,
-      filename: filename,
-      chunkSize: chunkSize!,
-      chunkHashes: chunkHashes,
-    );
+    final meta = Uint8List(16);
+    meta[15] = 0x8d;
+    meta[14] = 0x1c;
+    meta[13] = 0x4b;
+    meta[12] = 0x7a;
+    meta[11] = 3; // type (bao)
+    meta[10] = 8; // bao depth
+
+    _copyTo(meta, 0, encodeEndian(baoResult.outboard.length, 8));
+
+    yield Uint8List.fromList(baoResult.outboard + meta);
   }
 
-  // TODO Maybe use correct msgpack format
-  DirectoryMetadata decodeDirectoryMetadata(Uint8List bytes) {
-    final u = Unpacker(bytes);
-
-    final magicByte = u.unpackInt();
-    if (magicByte != metadataMagicByte) {
-      throw 'Invalid metadata: Unsupported magic byte';
+  void _copyTo(Uint8List list, int offset, Uint8List input) {
+    for (int i = 0; i < input.length; i++) {
+      list[offset + i] = input[i];
     }
-    final typeAndVersion = u.unpackInt();
-    if (typeAndVersion != metadataTypeDirectory) {
-      throw 'Invalid metadata: Wrong metadata type';
-    }
-
-    final dirname = u.unpackString();
-
-    final tryFiles = u.unpackList().cast<String>();
-
-    final errorPages = u.unpackMap().cast<int, String>();
-
-    final length = u.unpackInt()!;
-
-    final dm = DirectoryMetadata(
-      dirname: dirname,
-      tryFiles: tryFiles,
-      errorPages: errorPages,
-      paths: {},
-    );
-
-    for (int i = 0; i < length; i++) {
-      dm.paths[u.unpackString()!] = DirectoryMetadataFileReference(
-        cid: CID.fromBytes(Uint8List.fromList(u.unpackBinary())),
-        size: u.unpackInt()!,
-        contentType: u.unpackString(),
-      );
-    }
-    return dm;
   }
 }

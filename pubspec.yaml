@@ -1,20 +1,20 @@
 name: s5_server
 description: proof of concept implementation of a new storage network
 publish_to: none
-version: 0.3.0
+version: 0.5.0
 
 environment:
   sdk: ">=2.18.2 <3.0.0"
 
 dependencies:
+  lib5:
+    git: https://github.com/s5-dev/lib5.git
   alfred:
-    git:
-      url: https://github.com/redsolver/alfred.git
+    git: https://github.com/redsolver/alfred.git
   belatuk_range_header: ^5.0.0
   async: ^2.9.0
   base_codecs: ^1.0.1
   convert: ^3.0.2
-  crypto: ^3.0.2
   http: ^0.13.5
   messagepack: ^0.2.1
   minio:
@@ -32,6 +32,9 @@ dependencies:
     git: https://github.com/redsolver/filesize.git
   string_scanner: ^1.1.1
   pool: ^1.5.1
+  sqflite_common_ffi: ^2.2.0+1
+  ffi: ^2.0.1
+  flutter_rust_bridge: ^1.49.0
   # ! disabled because the arweave-dart library is licensed GPL-2.0 and this repo is MIT
   # arweave:
   #   git: https://github.com/ardriveapp/arweave-dart.git
@@ -39,3 +42,4 @@ dependencies:
 dev_dependencies:
   lints: ^2.0.0
   test: ^1.16.0
+  ffigen: ^6.1.2

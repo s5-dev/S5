@@ -1,0 +1,19 @@
+[package]
+edition = "2021"
+name = "rust"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+flutter_rust_bridge_codegen = { features = [] }
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+anyhow = "1.0.66"
+bao = { git = "https://github.com/redsolver/bao", branch = "chunk_groups" }
+blake3 = { git = "https://github.com/BLAKE3-team/BLAKE3", branch = "more_guts" }
+error-chain = "0.12.4"
+flutter_rust_bridge = "1"

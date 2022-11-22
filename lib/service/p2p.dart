@@ -2,35 +2,29 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:base_codecs/base_codecs.dart';
-import 'package:cryptography/cryptography.dart';
-import 'package:cryptography/helpers.dart';
 import 'package:hive/hive.dart';
+import 'package:lib5/constants.dart';
+import 'package:lib5/lib5.dart';
+import 'package:lib5/util.dart';
 import 'package:messagepack/messagepack.dart';
-import 'package:s5_server/constants.dart';
-import 'package:s5_server/crypto/ed25519.dart';
-import 'package:s5_server/logger/base.dart';
-import 'package:s5_server/model/multihash.dart';
-import 'package:s5_server/model/signed_message.dart';
-import 'package:s5_server/node.dart';
-import 'package:s5_server/registry/registry.dart';
-import 'package:s5_server/util/bytes.dart';
-import 'package:s5_server/util/score.dart';
 import 'package:tint/tint.dart';
 
+import 'package:s5_server/logger/base.dart';
+import 'package:s5_server/model/node_id.dart';
+import 'package:s5_server/model/signed_message.dart';
+import 'package:s5_server/node.dart';
+
 class Peer {
-  // TODO Always store id as Uint8List
-  late final String id;
-  late final Uint8List binaryId;
+  late final NodeID id;
 
   final Socket socket;
   final List<Uri> connectionUris;
 
   bool isConnected = false;
 
-  final connectedPeers = <String>{};
+  final connectedPeers = <NodeID>{};
 
-  final challenge = Uint8List(32);
+  late final Uint8List challenge;
 
   Peer(
     this.socket, {
@@ -41,7 +35,7 @@ class Peer {
 class P2PService {
   final S5Node node;
 
-  late KeyPair nodeKeyPair;
+  late KeyPairEd25519 nodeKeyPair;
 
   P2PService(this.node);
 
@@ -49,57 +43,56 @@ class P2PService {
 
   late final Box<Map> nodesBox;
 
-  late final Uint8List nodeIdBinary;
+  late final NodeID localNodeId;
 
-  late final String localNodeId;
-
-  final peers = <String, Peer>{};
+  final peers = <NodeID, Peer>{};
+  final reconnectDelay = <NodeID, int>{};
 
   final List<Uri> selfConnectionUris = [];
-  final reconnectDelay = <String, int>{};
 
   // TODO clean this table after a while (default 1 hour)
-  final hashQueryRoutingTable = <String, List<String>>{};
+  final hashQueryRoutingTable = <Multihash, List<NodeID>>{};
 
   Future<void> init() async {
-    nodeIdBinary = Uint8List.fromList(
-      [mkeyEd25519] +
-          (await nodeKeyPair.extractPublicKey() as SimplePublicKey).bytes,
-    );
+    localNodeId = NodeID(nodeKeyPair.publicKey);
 
-    localNodeId = encodeNodeId(
-      nodeIdBinary,
-    );
-    nodesBox = await Hive.openBox('nodes');
+    nodesBox = await Hive.openBox('s5-nodes');
   }
 
   Future<void> start() async {
-    final networkSelf = node.config['network']?['self'];
+    final networkSelf = node.config['p2p']?['self']?['tcp'];
 
     if (networkSelf != null) {
       final socket = await ServerSocket.bind('0.0.0.0', networkSelf['port']);
-      socket.listen((peerSocket) {
-        final p = Peer(
-          peerSocket,
-          connectionUris: [],
-        );
+      socket.listen(
+        (peerSocket) {
+          final p = Peer(
+            peerSocket,
+            connectionUris: [],
+          );
 
-        runZonedGuarded(
-          () {
-            onNewPeer(p, null);
-          },
-          (e, st) {
-            logger.catched(e, st);
-          },
-        );
-      });
+          runZonedGuarded(
+            () {
+              onNewPeer(p, null);
+            },
+            (e, st) {
+              logger.catched(e, st);
+            },
+          );
+        },
+        cancelOnError: false,
+        onError: (e) {
+          logger.warn(e);
+        },
+        // onDone: (){}
+      );
       selfConnectionUris.add(
         Uri.parse('tcp://${networkSelf['ip']}:${networkSelf['port']}'),
       );
 
       logger.info('connection uris: $selfConnectionUris');
     }
-    final initialPeers = node.config['network']?['peers']?['initial'] ?? [];
+    final initialPeers = node.config['p2p']?['peers']?['initial'] ?? [];
 
     for (final p in initialPeers) {
       connectToNode([Uri.parse(p)]);
@@ -107,7 +100,7 @@ class P2PService {
   }
 
   void onNewPeer(Peer peer, Function? reconnect) {
-    fillBytesWithSecureRandom(peer.challenge);
+    peer.challenge = node.crypto.generateRandomBytes(32);
 
     final initialAuthPayloadPacker = Packer();
     initialAuthPayloadPacker.packInt(protocolMethodHandshakeOpen);
@@ -123,17 +116,18 @@ class P2PService {
           p.packInt(protocolMethodHandshakeDone);
           p.packBinary(u.unpackBinary());
           p.packInt(selfConnectionUris.length);
-          for (final u in selfConnectionUris) {
-            p.packString(u.toString());
+          for (final uri in selfConnectionUris) {
+            p.packString(uri.toString());
           }
+          // TODO Protocol version
+          // p.packInt(protocolVersion);
           peer.socket.add(await signMessage(p.takeBytes()));
           return;
         } else if (method == protocolMethodRegistryUpdate) {
           final sre = SignedRegistryEntry(
             pk: Uint8List.fromList(u.unpackBinary()),
-            dk: Uint8List.fromList(u.unpackBinary()),
-            data: Uint8List.fromList(u.unpackBinary()),
             revision: u.unpackInt()!,
+            data: Uint8List.fromList(u.unpackBinary()),
             signature: Uint8List.fromList(u.unpackBinary()),
           );
           node.registry.set(sre, receivedFrom: peer);
@@ -147,7 +141,7 @@ class P2PService {
           if (method2 == protocolMethodHandshakeDone) {
             final challenge = Uint8List.fromList(u.unpackBinary());
 
-            if (!equal(peer.challenge, challenge)) {
+            if (!areBytesEqual(peer.challenge, challenge)) {
               throw 'Invalid challenge';
             }
 
@@ -159,7 +153,6 @@ class P2PService {
                 throw 'Invalid peer id on initial list';
               }
             }
-            peer.binaryId = decodeNodeId(pId);
 
             peer.isConnected = true;
 
@@ -173,7 +166,7 @@ class P2PService {
             }
 
             logger.info(
-              '${'[+]'.green().bold()} ${peer.id.green()} (${(peer.connectionUris.isEmpty ? peer.socket.address.address : peer.connectionUris.first).toString().cyan()})',
+              '${'[+]'.green().bold()} ${peer.id.toString().green()} (${(peer.connectionUris.isEmpty ? peer.socket.address.address : peer.connectionUris.first).toString().cyan()})',
             );
 
             sendPublicPeersToPeer(peer, peers.values);
@@ -202,7 +195,7 @@ class P2PService {
               );
             }
 
-            final list = hashQueryRoutingTable[hash.key] ?? [];
+            final list = hashQueryRoutingTable[hash] ?? [];
             for (final peerId in list) {
               if (peers.containsKey(peerId)) {
                 try {
@@ -217,7 +210,7 @@ class P2PService {
             final length = u.unpackInt()!;
             for (int i = 0; i < length; i++) {
               final peerIdBinary = u.unpackBinary();
-              final id = encodeNodeId(Uint8List.fromList(peerIdBinary));
+              final id = NodeID(Uint8List.fromList(peerIdBinary));
 
               final isConnected = u.unpackBool()!;
 
@@ -234,8 +227,9 @@ class P2PService {
 
               if (connectionUris.isNotEmpty) {
                 // TODO Fully support multiple connection uris
-                final uri = connectionUris.first.replace(userInfo: id);
-                if (!reconnectDelay.containsKey(uri.userInfo)) {
+                final uri =
+                    connectionUris.first.replace(userInfo: id.toBase58());
+                if (!reconnectDelay.containsKey(NodeID.decode(uri.userInfo))) {
                   connectToNode([uri]);
                 }
               }
@@ -246,8 +240,8 @@ class P2PService {
 
           final contains = node.exposeStore && await node.store!.contains(hash);
           if (!contains) {
-            hashQueryRoutingTable[hash.key] =
-                (hashQueryRoutingTable[hash.key] ?? []) + [peer.id];
+            hashQueryRoutingTable[hash] =
+                (hashQueryRoutingTable[hash] ?? []) + [peer.id];
 
             for (final p in peers.values) {
               if (p.id != peer.id && !peer.connectedPeers.contains(p.id)) {
@@ -264,7 +258,7 @@ class P2PService {
 
           final p = Packer();
           p.packInt(protocolMethodHashQueryResponse);
-          p.packBinary(hash.bytes);
+          p.packBinary(hash.fullBytes);
           p.packInt(
             DateTime.now().add(Duration(hours: 1)).millisecondsSinceEpoch,
           );
@@ -273,8 +267,7 @@ class P2PService {
           peer.socket.add(await signMessage(p.takeBytes()));
         } else if (method == protocolMethodRegistryQuery) {
           final pk = Uint8List.fromList(u.unpackBinary());
-          final dk = Uint8List.fromList(u.unpackBinary());
-          final sre = node.registry.getFromDB(pk, dk);
+          final sre = node.registry.getFromDB(pk);
           if (sre != null) {
             peer.socket.add(node.registry.prepareMessage(sre));
           }
@@ -285,7 +278,7 @@ class P2PService {
           if (peers.containsKey(peer.id)) {
             peers.remove(peer.id);
             logger.info(
-              '${'[-]'.red().bold()} ${peer.id.red()} (${(peer.connectionUris.isEmpty ? peer.socket.address.address : peer.connectionUris.first).toString().cyan()})',
+              '${'[-]'.red().bold()} ${peer.id.toString().red()} (${(peer.connectionUris.isEmpty ? peer.socket.address.address : peer.connectionUris.first).toString().cyan()})',
             );
           }
         } catch (_) {
@@ -313,33 +306,35 @@ class P2PService {
 
     p.packInt(peersToSend.length);
     for (final pts in peersToSend) {
-      p.packBinary(pts.binaryId);
+      p.packBinary(pts.id.bytes);
       p.packBool(pts.isConnected);
       p.packInt(pts.connectionUris.length);
-      for (final u in pts.connectionUris) {
-        p.packString(u.toString());
+      for (final uri in pts.connectionUris) {
+        p.packString(uri.toString());
       }
     }
     peer.socket.add(await signMessage(p.takeBytes()));
   }
 
-  double getNodeScore(String nodeId) {
+  // TODO nodes with a score below 0.2 should be disconnected immediately and responses dropped
+
+  double getNodeScore(NodeID nodeId) {
     if (nodeId == localNodeId) {
       return 1;
     }
-    final p = nodesBox.get(nodeId) ?? {};
+    final p = nodesBox.get(nodeId.toBase58()) ?? {};
     return calculateScore(p['+'] ?? 0, p['-'] ?? 0);
   }
 
-  void incrementScoreCounter(String nodeId, String type) {
-    final p = nodesBox.get(nodeId) ?? {};
+  void incrementScoreCounter(NodeID nodeId, String type) {
+    final p = nodesBox.get(nodeId.toBase58()) ?? {};
     p[type] = (p[type] ?? 0) + 1;
 
-    nodesBox.put(nodeId, p);
+    nodesBox.put(nodeId.toBase58(), p);
   }
 
   // TODO add a bit of randomness with multiple options
-  void sortNodesByScore(List<String> nodes) {
+  void sortNodesByScore(List<NodeID> nodes) {
     nodes.sort(
       (a, b) {
         return -getNodeScore(a).compareTo(getNodeScore(b));
@@ -347,50 +342,40 @@ class P2PService {
     );
   }
 
-  String encodeNodeId(Uint8List bytes) {
-    return 'z${base58Bitcoin.encode(bytes)}';
-  }
-
-  Uint8List decodeNodeId(String str) {
-    return base58Bitcoin.decode(str.substring(1));
-  }
-
   Future<Uint8List> signMessage(Uint8List message) async {
     final packer = Packer();
 
-    final signature = await ed25519.sign(message, keyPair: nodeKeyPair);
+    final signature = await node.crypto.signEd25519(
+      kp: nodeKeyPair,
+      message: message,
+    );
 
     packer.packInt(protocolMethodSignedMessage);
-    packer.packBinary(nodeIdBinary);
+    packer.packBinary(localNodeId.bytes);
 
-    packer.packBinary(signature.bytes);
+    packer.packBinary(signature);
     packer.packBinary(message);
 
     return packer.takeBytes();
   }
 
   Future<SignedMessage> unpackAndVerifySignature(Unpacker u) async {
-    final nodeId = u.unpackBinary();
+    final nodeId = NodeID(Uint8List.fromList(u.unpackBinary()));
+    final signature = Uint8List.fromList(u.unpackBinary());
+    final message = Uint8List.fromList(u.unpackBinary());
 
-    final signature = u.unpackBinary();
-
-    final message = u.unpackBinary();
-    final isValid = await ed25519.verify(
-      message,
-      signature: Signature(
-        signature,
-        publicKey: SimplePublicKey(
-          nodeId.sublist(1),
-          type: KeyPairType.ed25519,
-        ),
-      ),
+    final isValid = await node.crypto.verifyEd25519(
+      pk: nodeId.bytes.sublist(1),
+      message: message,
+      signature: signature,
     );
+
     if (!isValid) {
       throw 'Invalid signature found';
     }
     return SignedMessage(
-      nodeId: encodeNodeId(Uint8List.fromList(nodeId)),
-      message: Uint8List.fromList(message),
+      nodeId: nodeId,
+      message: message,
     );
   }
 
@@ -398,7 +383,7 @@ class P2PService {
     final p = Packer();
 
     p.packInt(protocolMethodHashQuery);
-    p.packBinary(hash.bytes);
+    p.packBinary(hash.fullBytes);
 
     final req = p.takeBytes();
 
@@ -416,7 +401,7 @@ class P2PService {
     if (connectionUri.userInfo.isEmpty) {
       throw 'Connection URI does not contain node id';
     }
-    final id = connectionUri.userInfo;
+    final id = NodeID.decode(connectionUri.userInfo);
     final ip = connectionUri.host;
     final port = connectionUri.port;
 

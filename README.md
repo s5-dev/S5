@@ -22,10 +22,8 @@ An implementation in Rust is planned.
 
 Raw files are the foundation of data stored on S5. They can have any size and are stored as the hash of themselves (blake3 by default).
 No additional metadata like filename or content type is added, to make deduplication as efficient as possible.
-
-### Metadata files/CIDs
-
-Metadata files are stored as raw files, but are usually very small. They reference one or more raw files that contain the file content and have additional metadata like filename, content type and hashes for specific chunks of the referenced raw file to make trustless streaming possible.
+Raw files are stored together with a part of their [BLAKE3 Bao](https://github.com/oconnor663/bao) hash tree, which makes it possible
+to trustlessly stream any 256 KiB chunk of a file. The chunk size is configurable.
 
 ### Directory files/CIDs
 
@@ -36,14 +34,13 @@ Can be used to deploy web apps on S5.
 ### Registry
 
 The registry is a decentralized key-value store with realtime subscriptions.
-Keys consist of a public ed25519 key and a 32-byte arbitrary datakey.
-The values have a revision number and are limited to 48 bytes in size.
-All writes to an entry must be signed by the public key that's part of the key.
+Keys are public ed25519 keys.
+The values have a revision number and are limited to 48 bytes of data.
+All writes to an entry must be signed by the public key.
 
 ### Resolver CIDs
 
 Resolver cids are just registry entries encoded as a CID.
-Registry entries used in resolver CIDs must have an empty datakey of just zeros.
 They reference another CID and are for example used for dynamically updating websites.
 
 ## Comparison to IPFS
@@ -64,7 +61,7 @@ S5 currently supports three storage backends:
 - S3 (Any cloud provider supporting the S3 protocol, see https://s3.wiki)
 - Local filesystem (needs additional configuration to make a http port available on the internet)
 - Arweave (expensive, permanent storage)
-- Sia (https://sia.tech/, planned)
+- Sia (experimental, https://sia.tech/)
 
 S5 currently supports one protocol to establish a connection between nodes:
 - TCP

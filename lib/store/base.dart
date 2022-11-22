@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:s5_server/model/multihash.dart';
+import 'package:lib5/lib5.dart';
 
 abstract class ObjectStore {
   Future<bool> contains(Multihash hash);

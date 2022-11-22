@@ -1,8 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:lib5/lib5.dart';
 import 'package:minio/minio.dart';
-import 'package:s5_server/model/multihash.dart';
-import 'package:s5_server/util/uid.dart';
 
 import 'base.dart';
 
@@ -11,7 +10,7 @@ class S3ObjectStore extends ObjectStore {
   final String bucket;
 
   @override
-  final canPutAsync = true;
+  final canPutAsync = false;
 
   S3ObjectStore(this.minio, this.bucket) {
     minio.putBucketCors(
@@ -29,11 +28,15 @@ class S3ObjectStore extends ObjectStore {
     );
   }
 
+  String getObjectKeyForHash(Multihash hash) {
+    return '0/${hash.toBase64Url()}';
+  }
+
   @override
   Future<bool> contains(Multihash hash) async {
     final res = await minio.objectExists(
       bucket,
-      hash.toBase64Url(),
+      getObjectKeyForHash(hash),
     );
     return res;
   }
@@ -46,7 +49,7 @@ class S3ObjectStore extends ObjectStore {
 
     final res = await minio.putObject(
       bucket,
-      hash.toBase64Url(),
+      getObjectKeyForHash(hash),
       data,
       onProgress: (bytes) {
         // TODO progress events
@@ -57,7 +60,7 @@ class S3ObjectStore extends ObjectStore {
     }
   }
 
-  @override
+/*   @override
   Future<String> putAsyncUpload(Stream<Uint8List> data) async {
     final path = 'uploading-cache/${generateUID()}';
     final res = await minio.putObject(
@@ -74,17 +77,21 @@ class S3ObjectStore extends ObjectStore {
 
   @override
   Future<void> putAsyncFinalize(String key, Multihash hash) async {
-    await minio.copyObject(bucket, hash.toBase64Url(), key);
+    await minio.copyObject(bucket, getObjectKeyForHash(hash), key);
     await minio.removeObject(bucket, key);
-  }
+  } */
 
   @override
   Future<String> provide(Multihash hash) {
-    return minio.presignedGetObject(bucket, hash.toBase64Url());
+    return minio.presignedGetObject(
+      bucket,
+      getObjectKeyForHash(hash),
+      expires: 86400, // TODO Configurable
+    );
   }
 
   @override
   Future<void> delete(Multihash hash) {
-    return minio.removeObject(bucket, hash.toBase64Url());
+    return minio.removeObject(bucket, getObjectKeyForHash(hash));
   }
 }

@@ -1,10 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:base_codecs/base_codecs.dart';
-import 'package:cryptography/helpers.dart';
+import 'package:lib5/lib5.dart';
 
-String generateUID() {
-  final uid = Uint8List(32);
-  fillBytesWithSecureRandom(uid);
-  return base32Rfc.encode(uid).replaceAll('', '=').toLowerCase();
+String generateUID(CryptoImplementation crypto) {
+  final uid = crypto.generateRandomBytes(32);
+  return base32Rfc.encode(uid).replaceAll('=', '').toLowerCase();
 }

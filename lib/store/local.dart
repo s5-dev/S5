@@ -3,10 +3,8 @@ import 'dart:typed_data';
 
 import 'package:alfred/alfred.dart';
 import 'package:base_codecs/base_codecs.dart';
+import 'package:lib5/lib5.dart';
 import 'package:path/path.dart';
-
-import 'package:s5_server/model/multihash.dart';
-import 'package:s5_server/util/uid.dart';
 
 import 'base.dart';
 
@@ -16,7 +14,7 @@ class LocalObjectStore extends ObjectStore {
   final Map httpServerConfig;
 
   @override
-  final canPutAsync = true;
+  final canPutAsync = false;
 
   LocalObjectStore(this.rootDir, this.httpServerConfig) {
     final app = Alfred();
@@ -36,14 +34,15 @@ class LocalObjectStore extends ObjectStore {
   }
 
   String getPathForHash(Multihash hash) {
-    final b = base32Rfc.encode(hash.bytes).toLowerCase().replaceAll('=', '');
+    final b =
+        base32Rfc.encode(hash.fullBytes).toLowerCase().replaceAll('=', '');
     var path = '';
 
     for (int i = 0; i < 8; i += 2) {
       path += '${b.substring(i, i + 2)}/';
     }
 
-    return path + b.substring(8);
+    return '0/$path${b.substring(8)}';
   }
 
   File getFileForHash(Multihash hash) {
@@ -67,13 +66,13 @@ class LocalObjectStore extends ObjectStore {
         .addStream(data);
   }
 
-  @override
+/*   @override
   Future<String> putAsyncUpload(Stream<Uint8List> data) async {
     final cacheFile = File(
       join(
         rootDir.path,
         'uploading-cache',
-        generateUID(),
+        generateUID(crypto),
       ),
     );
 
@@ -86,7 +85,7 @@ class LocalObjectStore extends ObjectStore {
   Future<void> putAsyncFinalize(String key, Multihash hash) async {
     getFileForHash(hash).parent.createSync(recursive: true);
     await File(key).rename(getFileForHash(hash).path);
-  }
+  } */
 
   @override
   Future<String> provide(Multihash hash) async {

@@ -15,9 +15,9 @@ port = 5522
 [http.api.delete]
 enabled = false
 
-[network.peers]
+[p2p.peers]
 initial = [
   'tcp://z2DWXhEypZqpsEXRY7LjzXCoXeVfP7z8uPUYjeKfnJuJV3A@95.143.172.232:43221', # uber.space
   'tcp://z2DfewUEBF5TnHjMXRyZCQobMirWXJqa3JCeb36UyaHLYhC@116.203.139.40:4444', # hetzner
-  'tcp://z2DVYoNRUFknwbFPz74j6sz8dZ1LosYzQ8XjjSCNcGHajcC@168.119.116.125:4444', # test node
+  'tcp://z2DVNifJx5XhjwQpecQMCZCguum2sAnJNNLfrQmRZt2zxiq@168.119.116.125:4444', # test node
 ]

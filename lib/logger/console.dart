@@ -4,29 +4,38 @@ import 'package:tint/tint.dart';
 import 'base.dart';
 
 class ConsoleLogger extends Logger {
+  final String prefix;
+  final bool format;
+
+  ConsoleLogger({this.prefix = '', this.format = true});
+
   @override
   void info(String s) {
-    print(s);
+    print(prefix + s);
   }
 
   @override
   void error(String s) {
-    stderr.writeln(s.onRed().bold());
+    stderr.writeln(prefix + s.onRed().bold());
   }
 
   @override
   void verbose(String s) {
-    stdout.writeln(s.grey());
+    if (format) {
+      stdout.writeln(prefix + s.grey());
+    } else {
+      stdout.writeln(prefix + s);
+    }
   }
 
   @override
   void warn(String s) {
-    stderr.writeln(s.yellow());
+    stderr.writeln(prefix + s.yellow());
   }
 
   @override
   void catched(e, st) {
-    warn(e.toString());
-    verbose(st.toString());
+    warn(prefix + e.toString());
+    verbose(prefix + st.toString());
   }
 }

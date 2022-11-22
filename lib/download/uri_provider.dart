@@ -1,4 +1,7 @@
-import 'package:s5_server/model/multihash.dart';
+import 'package:lib5/lib5.dart';
+import 'package:lib5/constants.dart';
+
+import 'package:s5_server/model/node_id.dart';
 import 'package:s5_server/node.dart';
 
 class DownloadUriProvider {
@@ -9,8 +12,8 @@ class DownloadUriProvider {
 
   final timeoutDuration = Duration(seconds: 60);
 
-  List<String> availableNodes = [];
-  late final Map<String, Uri> uris;
+  List<NodeID> availableNodes = [];
+  late final Map<NodeID, Uri> uris;
 
   bool isTimedOut = false;
 
@@ -76,7 +79,7 @@ class DownloadUriProvider {
       }
       isWaitingForUri = true;
       if (isTimedOut) {
-        throw 'Could not download raw file: Timed out after $timeoutDuration';
+        throw 'Could not download raw file: Timed out after $timeoutDuration ${CID(cidTypeRaw, hash).toBase64Url()}';
       }
       await Future.delayed(Duration(milliseconds: 10));
     }
@@ -92,7 +95,7 @@ class DownloadUriProvider {
 }
 
 class DownloadURI {
-  final String nodeId;
+  final NodeID nodeId;
   final Uri uri;
   DownloadURI(this.nodeId, this.uri);
 }
