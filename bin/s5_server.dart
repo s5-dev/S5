@@ -32,7 +32,11 @@ void main(List<String> arguments) async {
   logger.info('s5-dart'.green().bold() + ' ' + 'v$nodeVersion'.red().bold());
   logger.info('');
 
-  final rust = initializeExternalLibrary('rust/target/release/librust.so');
+  final rust = initializeExternalLibrary(
+    Platform.isWindows
+        ? 'rust/target/release/rust.dll'
+        : 'rust/target/release/librust.so',
+  );
   final crypto = RustCryptoImplementation(rust);
 
   if (file
