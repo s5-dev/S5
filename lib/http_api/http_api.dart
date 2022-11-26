@@ -113,14 +113,25 @@ class HttpAPIServer {
         throw 'No store configured, uploads not possible';
       }
 
-      final bytes = await req.fold<List<int>>(
-        <int>[],
-        (previous, element) => previous + element,
-      );
+      Uint8List bytes;
 
-      final cid = await node.uploadRawFile(
-        Uint8List.fromList(bytes),
-      );
+      if (req.headers.contentType?.mimeType == 'multipart/form-data') {
+        final body = (await req.body as Map);
+
+        final HttpBodyFileUpload file = body['file'];
+        bytes = Uint8List.fromList(
+          file.content is String
+              ? (file.content as String).codeUnits
+              : file.content,
+        );
+      } else {
+        bytes = Uint8List.fromList(await req.fold<List<int>>(
+          <int>[],
+          (previous, element) => previous + element,
+        ));
+      }
+
+      final cid = await node.uploadRawFile(bytes);
 
       if (auth.user != null) {
         await node.accounts!.addObjectPinToUser(
