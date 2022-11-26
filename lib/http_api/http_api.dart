@@ -388,7 +388,7 @@ class HttpAPIServer {
       };
     });
 
-    app.post('/s5/import/local_file', (req, res) async {
+/*     app.post('/s5/import/local_file', (req, res) async {
       final auth = await node.checkAuth(req, 's5/import/local_file');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -413,7 +413,7 @@ class HttpAPIServer {
       return {
         'cid': cid.toBase58(),
       };
-    });
+    }); */
 
     app.get('/:cid', (req, res) async {
       final auth = await node.checkAuth(req, 's5/download');
