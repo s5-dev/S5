@@ -1,10 +1,8 @@
-use blake3::{Hash, Hasher};
+use blake3::{Hash};
 
-use flutter_rust_bridge::frb;
 use flutter_rust_bridge::support::from_vec_to_array;
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom, Write};
-use std::sync::Arc;
 
 fn blake3_digest<R: Read>(mut reader: R) -> Result<Hash, anyhow::Error> {
     let mut hasher = blake3::Hasher::new();
@@ -123,7 +121,7 @@ fn hash_bao_file_internal<R: Read>(mut reader: R) -> Result<BaoResult, anyhow::E
         if count == 0 {
             break;
         }
-        encoder.write(&buffer[..count]);
+        let _res = encoder.write(&buffer[..count]);
     }
 
     Ok(BaoResult {
