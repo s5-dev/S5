@@ -380,8 +380,6 @@ class S5Node {
 
     p.packString(dirname);
 
-    p.packMapLength(0);
-
     p.packListLength(tryFiles?.length ?? 0);
 
     for (final path in tryFiles ?? []) {
@@ -424,6 +422,8 @@ class S5Node {
         ),
       );
     }
+
+    p.packMapLength(0);
 
     final cid = await uploadRawFile(p.takeBytes());
 
