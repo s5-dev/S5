@@ -860,9 +860,28 @@ class HttpAPIServer {
               '"${servedFile.cid.hash.toBase64Url()}"',
             );
 
-            final bytes = await node.downloadBytesByHash(servedFile.cid.hash);
-            res.add(bytes);
-            res.close();
+            if (servedFile.cid.size == null ||
+                servedFile.cid.size! <= defaultChunkSize) {
+              res.add(await node.downloadBytesByHash(servedFile.cid.hash));
+              res.close();
+            } else {
+              final dlUriProvider = DownloadUriProvider(
+                node,
+                servedFile.cid.hash,
+              );
+              dlUriProvider.start();
+
+              await handleChunkedFile(
+                request,
+                res,
+                servedFile.cid.hash,
+                servedFile.cid.size!,
+                dlUriProvider,
+                cachePath: join(cachePath, 'streamed_files'),
+                logger: node.logger,
+                node: node,
+              );
+            }
             return;
           }
         }
