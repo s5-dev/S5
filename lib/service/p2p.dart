@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:convert/convert.dart';
 import 'package:hive/hive.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
@@ -17,7 +18,46 @@ import 'package:s5_server/node.dart';
 class Peer {
   late final NodeID id;
 
-  final Socket socket;
+  final Socket _socket;
+
+  void sendMessage(Uint8List message) {
+    _socket.add(encodeEndian(message.length, 4) + message);
+  }
+
+  void listenForMessages(
+    Function callback, {
+    dynamic onDone,
+    Function? onError,
+  }) {
+    final sub = _socket.listen(
+      (event) async {
+        int pos = 0;
+
+        while (pos < event.length) {
+          final length = decodeEndian(event.sublist(pos, pos + 4));
+
+          if (event.length < (pos + 4 + length)) {
+            print('Ignore message, invalid length (from $id)');
+            return;
+          }
+
+          try {
+            await callback(event.sublist(pos + 4, pos + 4 + length));
+          } catch (e, st) {
+            // TODO Add proper error logging
+            print('$id: $e');
+            print(st);
+          }
+
+          pos += length + 4;
+        }
+      },
+      onDone: onDone,
+      onError: onError,
+      cancelOnError: false,
+    );
+  }
+
   final List<Uri> connectionUris;
 
   bool isConnected = false;
@@ -27,9 +67,15 @@ class Peer {
   late final Uint8List challenge;
 
   Peer(
-    this.socket, {
+    this._socket, {
     required this.connectionUris,
   });
+
+  String renderLocationUri() {
+    return connectionUris.isEmpty
+        ? _socket.address.address
+        : connectionUris.first.toString();
+  }
 }
 
 class P2PService {
@@ -72,9 +118,7 @@ class P2PService {
           );
 
           runZonedGuarded(
-            () {
-              onNewPeer(p, null);
-            },
+            () => onNewPeer(p, verifyId: false),
             (e, st) {
               logger.catched(e, st);
             },
@@ -99,15 +143,16 @@ class P2PService {
     }
   }
 
-  void onNewPeer(Peer peer, Function? reconnect) {
+  Future<void> onNewPeer(Peer peer, {required bool verifyId}) async {
     peer.challenge = node.crypto.generateRandomBytes(32);
 
     final initialAuthPayloadPacker = Packer();
     initialAuthPayloadPacker.packInt(protocolMethodHandshakeOpen);
     initialAuthPayloadPacker.packBinary(peer.challenge);
-    peer.socket.add(initialAuthPayloadPacker.takeBytes());
 
-    peer.socket.listen(
+    final completer = Completer();
+
+    peer.listenForMessages(
       (event) async {
         Unpacker u = Unpacker(event);
         final method = u.unpackInt();
@@ -121,16 +166,21 @@ class P2PService {
           }
           // TODO Protocol version
           // p.packInt(protocolVersion);
-          peer.socket.add(await signMessage(p.takeBytes()));
+          peer.sendMessage(await signMessage(p.takeBytes()));
           return;
         } else if (method == protocolMethodRegistryUpdate) {
           final sre = SignedRegistryEntry(
-            pk: Uint8List.fromList(u.unpackBinary()),
+            pk: u.unpackBinary(),
             revision: u.unpackInt()!,
-            data: Uint8List.fromList(u.unpackBinary()),
-            signature: Uint8List.fromList(u.unpackBinary()),
+            data: u.unpackBinary(),
+            signature: u.unpackBinary(),
           );
-          node.registry.set(sre, receivedFrom: peer);
+          try {
+            await node.registry.set(sre, receivedFrom: peer);
+          } catch (e) {
+            // TODO Do not throw error, when receiving an invalid entry is normal
+          }
+          return;
         }
 
         if (method == protocolMethodSignedMessage) {
@@ -139,14 +189,15 @@ class P2PService {
           final method2 = u.unpackInt();
 
           if (method2 == protocolMethodHandshakeDone) {
-            final challenge = Uint8List.fromList(u.unpackBinary());
+            final challenge = u.unpackBinary();
 
             if (!areBytesEqual(peer.challenge, challenge)) {
               throw 'Invalid challenge';
             }
 
             final pId = sm.nodeId;
-            if (reconnect == null) {
+
+            if (!verifyId) {
               peer.id = pId;
             } else {
               if (peer.id != pId) {
@@ -166,7 +217,7 @@ class P2PService {
             }
 
             logger.info(
-              '${'[+]'.green().bold()} ${peer.id.toString().green()} (${(peer.connectionUris.isEmpty ? peer.socket.address.address : peer.connectionUris.first).toString().cyan()})',
+              '${'[+]'.green().bold()} ${peer.id.toString().green()} (${(peer.renderLocationUri()).toString().cyan()})',
             );
 
             sendPublicPeersToPeer(peer, peers.values);
@@ -180,7 +231,7 @@ class P2PService {
 
             return;
           } else if (method2 == protocolMethodHashQueryResponse) {
-            final hash = Multihash(Uint8List.fromList(u.unpackBinary()));
+            final hash = Multihash(u.unpackBinary());
 
             final ttl = u.unpackInt()!;
 
@@ -199,7 +250,7 @@ class P2PService {
             for (final peerId in list) {
               if (peers.containsKey(peerId)) {
                 try {
-                  peers[peerId]!.socket.add(event);
+                  peers[peerId]!.sendMessage(event);
                 } catch (e, st) {
                   logger.catched(e, st);
                 }
@@ -210,7 +261,7 @@ class P2PService {
             final length = u.unpackInt()!;
             for (int i = 0; i < length; i++) {
               final peerIdBinary = u.unpackBinary();
-              final id = NodeID(Uint8List.fromList(peerIdBinary));
+              final id = NodeID(peerIdBinary);
 
               final isConnected = u.unpackBool()!;
 
@@ -236,16 +287,20 @@ class P2PService {
             }
           }
         } else if (method == protocolMethodHashQuery) {
-          final hash = Multihash(Uint8List.fromList(u.unpackBinary()));
+          final hash = Multihash(u.unpackBinary());
 
           final contains = node.exposeStore && await node.store!.contains(hash);
           if (!contains) {
-            hashQueryRoutingTable[hash] =
-                (hashQueryRoutingTable[hash] ?? []) + [peer.id];
-
-            for (final p in peers.values) {
-              if (p.id != peer.id && !peer.connectedPeers.contains(p.id)) {
-                p.socket.add(event);
+            if (hashQueryRoutingTable.containsKey(hash)) {
+              if (!hashQueryRoutingTable[hash]!.contains(peer.id)) {
+                hashQueryRoutingTable[hash]!.add(peer.id);
+              }
+            } else {
+              hashQueryRoutingTable[hash] = [peer.id];
+              for (final p in peers.values) {
+                if (p.id != peer.id && !peer.connectedPeers.contains(p.id)) {
+                  p.sendMessage(event);
+                }
               }
             }
 
@@ -264,12 +319,12 @@ class P2PService {
           );
           p.packString(result);
 
-          peer.socket.add(await signMessage(p.takeBytes()));
+          peer.sendMessage(await signMessage(p.takeBytes()));
         } else if (method == protocolMethodRegistryQuery) {
-          final pk = Uint8List.fromList(u.unpackBinary());
+          final pk = u.unpackBinary();
           final sre = node.registry.getFromDB(pk);
           if (sre != null) {
-            peer.socket.add(node.registry.prepareMessage(sre));
+            peer.sendMessage(node.registry.prepareMessage(sre));
           }
         }
       },
@@ -278,26 +333,21 @@ class P2PService {
           if (peers.containsKey(peer.id)) {
             peers.remove(peer.id);
             logger.info(
-              '${'[-]'.red().bold()} ${peer.id.toString().red()} (${(peer.connectionUris.isEmpty ? peer.socket.address.address : peer.connectionUris.first).toString().cyan()})',
+              '${'[-]'.red().bold()} ${peer.id.toString().red()} (${(peer.renderLocationUri()).toString().cyan()})',
             );
           }
         } catch (_) {
-          logger.info('[-] ${peer.socket.address.address}');
+          logger.info('[-] ${peer.renderLocationUri()}');
         }
-        if (reconnect != null) {
-          final delay = reconnectDelay[peer.id] ?? 1;
-
-          reconnectDelay[peer.id] = delay * 2;
-
-          await Future.delayed(Duration(seconds: delay));
-          reconnect();
-        }
+        completer.completeError('onDone');
       },
       onError: (e) {
         logger.warn('${peer.id}: $e');
       },
-      cancelOnError: false,
     );
+    peer.sendMessage(initialAuthPayloadPacker.takeBytes());
+
+    return completer.future;
   }
 
   void sendPublicPeersToPeer(Peer peer, Iterable<Peer> peersToSend) async {
@@ -313,7 +363,7 @@ class P2PService {
         p.packString(uri.toString());
       }
     }
-    peer.socket.add(await signMessage(p.takeBytes()));
+    peer.sendMessage(await signMessage(p.takeBytes()));
   }
 
   // TODO nodes with a score below 0.2 should be disconnected immediately and responses dropped
@@ -360,9 +410,9 @@ class P2PService {
   }
 
   Future<SignedMessage> unpackAndVerifySignature(Unpacker u) async {
-    final nodeId = NodeID(Uint8List.fromList(u.unpackBinary()));
-    final signature = Uint8List.fromList(u.unpackBinary());
-    final message = Uint8List.fromList(u.unpackBinary());
+    final nodeId = NodeID(u.unpackBinary());
+    final signature = u.unpackBinary();
+    final message = u.unpackBinary();
 
     final isValid = await node.crypto.verifyEd25519(
       pk: nodeId.bytes.sublist(1),
@@ -388,7 +438,7 @@ class P2PService {
     final req = p.takeBytes();
 
     for (final peer in peers.values) {
-      peer.socket.add(req);
+      peer.sendMessage(req);
     }
   }
 
@@ -402,36 +452,49 @@ class P2PService {
       throw 'Connection URI does not contain node id';
     }
     final id = NodeID.decode(connectionUri.userInfo);
+
+    reconnectDelay[id] = reconnectDelay[id] ?? 1;
+
     final ip = connectionUri.host;
     final port = connectionUri.port;
 
     if (id == localNodeId) {
       return;
     }
+    bool retried = false;
     runZonedGuarded(
       () async {
-        reconnectDelay[id] ??= 1;
-
         logger.verbose('[connect] $connectionUri');
 
         final socket = await Socket.connect(ip, port);
 
-        onNewPeer(
-            Peer(
-              socket,
-              connectionUris: [connectionUri],
-            )..id = id, () {
-          connectToNode(connectionUris);
-        });
+        await onNewPeer(
+          Peer(
+            socket,
+            connectionUris: [connectionUri],
+          )..id = id,
+          verifyId: true,
+        );
       },
       (e, st) async {
+        if (retried) return;
+        retried = true;
+
         if (e is SocketException) {
           if (e.message == 'Connection refused') {
             logger.warn('[!] $id: $e');
-            return;
+          } else {
+            logger.catched(e, st);
           }
+        } else {
+          logger.catched(e, st);
         }
-        logger.catched(e, st);
+
+        final delay = reconnectDelay[id]!;
+        reconnectDelay[id] = delay * 2;
+        await Future.delayed(Duration(seconds: delay));
+
+        connectToNode(connectionUris);
       },
     );
   }

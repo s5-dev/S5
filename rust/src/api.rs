@@ -1,8 +1,35 @@
-use blake3::{Hash};
+use blake3::Hash;
 
-use flutter_rust_bridge::support::from_vec_to_array;
+use chacha20poly1305::{
+    aead::{generic_array::GenericArray, Aead, KeyInit, OsRng},
+    XChaCha20Poly1305, XNonce,
+};
+use flutter_rust_bridge::{support::from_vec_to_array, SyncReturn};
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom, Write};
+
+pub fn encrypt_xchacha20poly1305(
+    key: Vec<u8>,
+    nonce: Vec<u8>,
+    plaintext: Vec<u8>,
+) -> Result<Vec<u8>, anyhow::Error> {
+    let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(&key));
+    let mut xnonce = XNonce::from_slice(&nonce);
+    let ciphertext = cipher.encrypt(&xnonce, &plaintext[..]);
+    Ok(ciphertext.unwrap())
+}
+
+pub fn decrypt_xchacha20poly1305(
+    key: Vec<u8>,
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+) -> Result<Vec<u8>, anyhow::Error> {
+    let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(&key));
+    let mut xnonce = XNonce::from_slice(&nonce);
+
+    let plaintext = cipher.decrypt(&xnonce, &ciphertext[..]);
+    Ok(plaintext.unwrap())
+}
 
 fn blake3_digest<R: Read>(mut reader: R) -> Result<Hash, anyhow::Error> {
     let mut hasher = blake3::Hasher::new();
@@ -31,6 +58,11 @@ pub fn hash_blake3_file(path: String) -> Result<Vec<u8>, anyhow::Error> {
 pub fn hash_blake3(input: Vec<u8>) -> Result<Vec<u8>, anyhow::Error> {
     let digest = blake3::hash(&input);
     Ok(digest.as_bytes().to_vec())
+}
+
+pub fn hash_blake3_sync(input: Vec<u8>) -> SyncReturn<Vec<u8>> {
+    let digest = blake3::hash(&input);
+    SyncReturn(digest.as_bytes().to_vec())
 }
 
 pub fn verify_integrity(

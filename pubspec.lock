@@ -46,7 +46,7 @@ packages:
     source: hosted
     version: "2.3.1"
   async:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: async
       url: "https://pub.dartlang.org"
@@ -170,7 +170,7 @@ packages:
       name: ffigen
       url: "https://pub.dartlang.org"
     source: hosted
-    version: "6.1.2"
+    version: "7.2.4"
   file:
     dependency: transitive
     description:
@@ -200,7 +200,7 @@ packages:
       name: flutter_rust_bridge
       url: "https://pub.dartlang.org"
     source: hosted
-    version: "1.49.0"
+    version: "1.56.0"
   frontend_server_client:
     dependency: transitive
     description:
@@ -269,7 +269,7 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: "27834ffd00f5adeac72531e9a4c7d7d86fe6a966"
+      resolved-ref: "7970b97fe7bc8f176836d85ec57c846ae8eb7d40"
       url: "https://github.com/s5-dev/lib5.git"
     source: git
     version: "0.1.0"
@@ -295,12 +295,14 @@ packages:
     source: hosted
     version: "0.12.12"
   messagepack:
-    dependency: "direct main"
+    dependency: transitive
     description:
-      name: messagepack
-      url: "https://pub.dartlang.org"
-    source: hosted
-    version: "0.2.1"
+      path: "."
+      ref: HEAD
+      resolved-ref: "89910d0375f37077bc3cd949760a1a62a0d2ceb9"
+      url: "https://github.com/redsolver/messagepack.git"
+    source: git
+    version: "0.2.0"
   meta:
     dependency: transitive
     description:
@@ -520,13 +522,6 @@ packages:
       url: "https://pub.dartlang.org"
     source: hosted
     version: "0.4.18"
-  thirds:
-    dependency: "direct main"
-    description:
-      name: thirds
-      url: "https://pub.dartlang.org"
-    source: hosted
-    version: "0.2.0-alpha.1"
   tint:
     dependency: "direct main"
     description:
@@ -541,6 +536,13 @@ packages:
       url: "https://pub.dartlang.org"
     source: hosted
     version: "0.13.1"
+  tuple:
+    dependency: transitive
+    description:
+      name: tuple
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.0.1"
   typed_data:
     dependency: transitive
     description:
@@ -570,7 +572,7 @@ packages:
     source: hosted
     version: "1.0.1"
   web_socket_channel:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: web_socket_channel
       url: "https://pub.dartlang.org"
@@ -597,5 +599,12 @@ packages:
       url: "https://pub.dartlang.org"
     source: hosted
     version: "3.1.1"
+  yaml_edit:
+    dependency: transitive
+    description:
+      name: yaml_edit
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "2.0.3"
 sdks:
   dart: ">=2.18.2 <3.0.0"

@@ -31,8 +31,12 @@ class CacheCleaner {
 
     int totalSize = allCacheFiles.fold(
       0,
-      (previousValue, element) =>
-          previousValue + (element as File).lengthSync(),
+      (previousValue, element) {
+        if (element.path.contains('/tus_upload/')) {
+          return previousValue;
+        }
+        return previousValue + (element as File).lengthSync();
+      },
     );
 
     final maxCacheSize = (maxCacheSizeInGB * 1000 * 1000 * 1000).round();
@@ -59,7 +63,8 @@ class CacheCleaner {
         break;
       }
       final File file = allCacheFiles.removeAt(0) as File;
-      if (file.path.contains('/upload/')) {
+      if (file.path.contains('/upload/') ||
+          file.path.contains('/tus_upload/')) {
         if (file.statSync().modified.isAfter(clt)) {
           continue;
         }

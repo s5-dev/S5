@@ -29,11 +29,16 @@ class DownloadUriProvider {
 
     _waitUntilIsWaiting(); // TODO This could run forever
 
-    node.p2p.sendHashRequest(hash);
+    bool requestSent = false;
 
     while (true) {
       final newUris = node.getDownloadUrisFromDB(hash);
       bool hasNewNode = false;
+
+      if (newUris.isEmpty && !requestSent) {
+        node.p2p.sendHashRequest(hash);
+        requestSent = true;
+      }
 
       for (final e in newUris.entries) {
         if (uris.containsKey(e.key)) {
@@ -79,7 +84,7 @@ class DownloadUriProvider {
       }
       isWaitingForUri = true;
       if (isTimedOut) {
-        throw 'Could not download raw file: Timed out after $timeoutDuration ${CID(cidTypeRaw, hash).toBase64Url()}';
+        throw 'Could not download raw file: Timed out after $timeoutDuration ${hash.toBase64Url()}';
       }
       await Future.delayed(Duration(milliseconds: 10));
     }
@@ -97,5 +102,10 @@ class DownloadUriProvider {
 class DownloadURI {
   final NodeID nodeId;
   final Uri uri;
+  // TODO Support custom headers
+
   DownloadURI(this.nodeId, this.uri);
+
+  @override
+  toString() => 'DownloadURI($uri, $nodeId)';
 }

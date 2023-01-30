@@ -125,10 +125,13 @@ class HttpAPIServer {
               : file.content,
         );
       } else {
-        bytes = Uint8List.fromList(await req.fold<List<int>>(
-          <int>[],
-          (previous, element) => previous + element,
-        ));
+        final byteList = <int>[];
+
+        await for (final chunk in req) {
+          byteList.addAll(chunk);
+        }
+
+        bytes = Uint8List.fromList(byteList);
       }
 
       final cid = await node.uploadRawFile(bytes);
@@ -227,6 +230,7 @@ class HttpAPIServer {
       },
     );
 
+    // TODO Persist upload sessions to cache (disk)
     final tusUploadSessions = <String, TusUploadSession>{};
 
     app.head('/s5/upload/tus/:id', (req, res) async {
@@ -242,6 +246,9 @@ class HttpAPIServer {
       res.headers.set('Tus-Resumable', '1.0.0');
       res.headers.set('Upload-Offset', tus.offset.toString());
       res.headers.set('Upload-Length', tus.totalLength.toString());
+      res.headers.set('Content-Length', tus.totalLength.toString());
+      res.headers.set('Cache-Control', 'no-store');
+      // TODO Upload-Metadata
 
       res.close();
     });
@@ -262,22 +269,21 @@ class HttpAPIServer {
         throw 'Invalid offset';
       }
 
-      await for (final chunk in req) {
-        tus.sink.add(chunk);
-        tus.offset += chunk.length;
-      }
+      final sink = tus.cacheFile.openWrite(mode: FileMode.writeOnlyAppend);
+
+      await sink.addStream(req);
+
+      await sink.close();
 
       res.headers.set('Tus-Resumable', '1.0.0');
 
       if (tus.offset == tus.totalLength) {
-        await tus.sink.flush();
-        await tus.sink.close();
-
         final uploadRes = await node.uploadLocalFile(tus.cacheFile);
 
         if (uploadRes.hash != tus.expectedHash) {
           await node.store!.delete(uploadRes.hash);
           tusUploadSessions.remove(uploadId);
+          await tus.cacheFile.delete();
           throw 'Invalid hash found';
         }
 
@@ -289,9 +295,14 @@ class HttpAPIServer {
           );
         }
 
+        await tus.cacheFile.delete();
+
         res.statusCode = 204;
         res.headers.set('Upload-Offset', tus.totalLength);
-        tusUploadSessions.remove(uploadId);
+
+        Future.delayed(Duration(minutes: 10)).then((value) {
+          tusUploadSessions.remove(uploadId);
+        });
       } else {
         throw 'Something went wrong, please try again';
       }
@@ -318,20 +329,18 @@ class HttpAPIServer {
 
       if (await node.store!.contains(mhash)) {
         // TODO If accounts system is enabled, pin to account
-        throw 'This raw file has already been uploaded';
+        throw 'Raw file with CID ${CID(cidTypeRaw, mhash, size: uploadLength)} has already been uploaded to this node';
       }
 
       final cacheFile = File(
         join(cachePath, 'tus_upload', uploadId, 'file'),
       );
-      cacheFile.parent.createSync(recursive: true);
-      final sink = cacheFile.openWrite();
+      cacheFile.createSync(recursive: true);
 
       tusUploadSessions[uploadId] = TusUploadSession(
         totalLength: uploadLength,
         expectedHash: mhash,
         cacheFile: cacheFile,
-        sink: sink,
       );
 
       final location =
@@ -426,6 +435,8 @@ class HttpAPIServer {
       };
     }); */
 
+    // TODO Support HEAD requests
+
     app.get('/:cid', (req, res) async {
       final auth = await node.checkAuth(req, 's5/download');
       if (auth.denied) return res.unauthorized(auth);
@@ -434,7 +445,7 @@ class HttpAPIServer {
 
       final cid = CID.decode(cidStr);
 
-      if (cid.type == cidTypeMetadataDirectory || cid.type == cidTypeResolver) {
+      if (cid.type == cidTypeMetadataWebApp || cid.type == cidTypeResolver) {
         final base32cid = cid.toBase32();
         final requestedUri = req.requestedUri;
         await res.redirect(
@@ -461,7 +472,8 @@ class HttpAPIServer {
 
       final hash = cid.hash;
 
-      final filename = req.uri.pathSegments.last;
+      final filename =
+          req.uri.queryParameters['filename'] ?? req.uri.pathSegments.last;
 
       var mediaType = lookupMimeType(
             filename,
@@ -664,7 +676,7 @@ class HttpAPIServer {
           final method = u.unpackInt();
           if (method == 2) {
             final stream = node.registry.listen(
-              Uint8List.fromList(u.unpackBinary()),
+              u.unpackBinary(),
             );
 
             stream.map((sre) {
@@ -694,7 +706,7 @@ class HttpAPIServer {
 
     final _server = await HttpServer.bind(
       node.config['http']?['api']?['bind'] ?? '127.0.0.1',
-      node.config['http']?['api']?['port'] ?? 5522,
+      node.config['http']?['api']?['port'] ?? 5050,
       shared: true,
       backlog: 0,
     );
@@ -802,10 +814,9 @@ class HttpAPIServer {
             cid = CID.fromBytes(res.data.sublist(1));
           }
 
-          final metadata =
-              await node.getMetadataByCID(cid) as DirectoryMetadata;
+          final metadata = await node.getMetadataByCID(cid) as WebAppMetadata;
 
-          DirectoryMetadataFileReference? servedFile;
+          WebAppMetadataFileReference? servedFile;
 
           var path = request.uri.path;
           if (path.startsWith('/')) {
@@ -913,16 +924,14 @@ class HttpAPIServer {
 }
 
 class TusUploadSession {
-  int offset = 0;
+  int get offset => cacheFile.lengthSync();
   final Multihash expectedHash;
   final int totalLength;
   final File cacheFile;
-  final IOSink sink;
 
   TusUploadSession({
     required this.totalLength,
     required this.expectedHash,
     required this.cacheFile,
-    required this.sink,
   });
 }

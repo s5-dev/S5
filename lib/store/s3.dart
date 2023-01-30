@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:lib5/lib5.dart';
@@ -9,10 +10,16 @@ class S3ObjectStore extends ObjectStore {
   final Minio minio;
   final String bucket;
 
+  final List<String> cdnUrls;
+
   @override
   final canPutAsync = false;
 
-  S3ObjectStore(this.minio, this.bucket) {
+  S3ObjectStore(
+    this.minio,
+    this.bucket, {
+    required this.cdnUrls,
+  }) {
     minio.putBucketCors(
       bucket,
       '''<?xml version="1.0" encoding="UTF-8"?>
@@ -51,9 +58,8 @@ class S3ObjectStore extends ObjectStore {
       bucket,
       getObjectKeyForHash(hash),
       data,
-      onProgress: (bytes) {
-        // TODO progress events
-      },
+      // TODO Make this configurable
+      chunkSize: 256 * 1024 * 1024,
     );
     if (res.isEmpty) {
       throw 'Upload failed';
@@ -81,8 +87,22 @@ class S3ObjectStore extends ObjectStore {
     await minio.removeObject(bucket, key);
   } */
 
+  final _random = Random();
+
   @override
   Future<String> provide(Multihash hash) {
+    if (cdnUrls.isNotEmpty) {
+      final String cdnUrl;
+      if (cdnUrls.length == 1) {
+        cdnUrl = cdnUrls.first;
+      } else {
+        cdnUrl = cdnUrls[_random.nextInt(cdnUrls.length)];
+      }
+      return Future.value(
+        '$cdnUrl${getObjectKeyForHash(hash)}',
+      );
+    }
+
     return minio.presignedGetObject(
       bucket,
       getObjectKeyForHash(hash),

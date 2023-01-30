@@ -2,6 +2,26 @@ use super::*;
 // Section: wire functions
 
 #[wasm_bindgen]
+pub fn wire_encrypt_xchacha20poly1305(
+    port_: MessagePort,
+    key: Box<[u8]>,
+    nonce: Box<[u8]>,
+    plaintext: Box<[u8]>,
+) {
+    wire_encrypt_xchacha20poly1305_impl(port_, key, nonce, plaintext)
+}
+
+#[wasm_bindgen]
+pub fn wire_decrypt_xchacha20poly1305(
+    port_: MessagePort,
+    key: Box<[u8]>,
+    nonce: Box<[u8]>,
+    ciphertext: Box<[u8]>,
+) {
+    wire_decrypt_xchacha20poly1305_impl(port_, key, nonce, ciphertext)
+}
+
+#[wasm_bindgen]
 pub fn wire_hash_blake3_file(port_: MessagePort, path: String) {
     wire_hash_blake3_file_impl(port_, path)
 }
@@ -9,6 +29,11 @@ pub fn wire_hash_blake3_file(port_: MessagePort, path: String) {
 #[wasm_bindgen]
 pub fn wire_hash_blake3(port_: MessagePort, input: Box<[u8]>) {
     wire_hash_blake3_impl(port_, input)
+}
+
+#[wasm_bindgen]
+pub fn wire_hash_blake3_sync(input: Box<[u8]>) -> support::WireSyncReturnStruct {
+    wire_hash_blake3_sync_impl(input)
 }
 
 #[wasm_bindgen]
@@ -33,6 +58,8 @@ pub fn wire_hash_bao_memory(port_: MessagePort, bytes: Box<[u8]>) {
 }
 
 // Section: allocate functions
+
+// Section: related functions
 
 // Section: impl Wire2Api
 

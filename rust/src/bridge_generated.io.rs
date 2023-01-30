@@ -2,6 +2,26 @@ use super::*;
 // Section: wire functions
 
 #[no_mangle]
+pub extern "C" fn wire_encrypt_xchacha20poly1305(
+    port_: i64,
+    key: *mut wire_uint_8_list,
+    nonce: *mut wire_uint_8_list,
+    plaintext: *mut wire_uint_8_list,
+) {
+    wire_encrypt_xchacha20poly1305_impl(port_, key, nonce, plaintext)
+}
+
+#[no_mangle]
+pub extern "C" fn wire_decrypt_xchacha20poly1305(
+    port_: i64,
+    key: *mut wire_uint_8_list,
+    nonce: *mut wire_uint_8_list,
+    ciphertext: *mut wire_uint_8_list,
+) {
+    wire_decrypt_xchacha20poly1305_impl(port_, key, nonce, ciphertext)
+}
+
+#[no_mangle]
 pub extern "C" fn wire_hash_blake3_file(port_: i64, path: *mut wire_uint_8_list) {
     wire_hash_blake3_file_impl(port_, path)
 }
@@ -9,6 +29,13 @@ pub extern "C" fn wire_hash_blake3_file(port_: i64, path: *mut wire_uint_8_list)
 #[no_mangle]
 pub extern "C" fn wire_hash_blake3(port_: i64, input: *mut wire_uint_8_list) {
     wire_hash_blake3_impl(port_, input)
+}
+
+#[no_mangle]
+pub extern "C" fn wire_hash_blake3_sync(
+    input: *mut wire_uint_8_list,
+) -> support::WireSyncReturnStruct {
+    wire_hash_blake3_sync_impl(input)
 }
 
 #[no_mangle]
@@ -42,6 +69,8 @@ pub extern "C" fn new_uint_8_list_0(len: i32) -> *mut wire_uint_8_list {
     };
     support::new_leak_box_ptr(ans)
 }
+
+// Section: related functions
 
 // Section: impl Wire2Api
 

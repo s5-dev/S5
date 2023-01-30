@@ -11,12 +11,22 @@ class ConsoleLogger extends Logger {
 
   @override
   void info(String s) {
-    print(prefix + s);
+    if (format) {
+      print(prefix + s);
+    } else {
+      stdout.writeln(
+        prefix + s.replaceAll(RegExp('\u001b\\[\\d+m'), ''),
+      );
+    }
   }
 
   @override
   void error(String s) {
-    stderr.writeln(prefix + s.onRed().bold());
+    if (format) {
+      stderr.writeln(prefix + s.onRed().bold());
+    } else {
+      stderr.writeln('$prefix[ERROR] $s');
+    }
   }
 
   @override
@@ -30,7 +40,11 @@ class ConsoleLogger extends Logger {
 
   @override
   void warn(String s) {
-    stderr.writeln(prefix + s.yellow());
+    if (format) {
+      stderr.writeln(prefix + s.yellow());
+    } else {
+      stderr.writeln('$prefix[warn] $s');
+    }
   }
 
   @override

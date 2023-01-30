@@ -1,57 +1,55 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
-import 'dart:typed_data';
 
-import 'package:lib5/lib5.dart';
+import 'package:s5_server/crypto/implementation.dart';
 import 'package:tint/tint.dart';
 import 'package:toml/toml.dart';
-import 'package:cryptography/cryptography.dart';
 
 import 'package:s5_server/constants.dart';
 import 'package:s5_server/node.dart';
 import 'package:s5_server/logger/console.dart';
-import 'package:s5_server/rust/bridge_definitions.dart';
+
 import 'ffi.io.dart';
 
 void main(List<String> arguments) async {
-  final logger = ConsoleLogger();
+  final logger = ConsoleLogger(
+    format: true,
+  );
 
-  if (arguments.isEmpty) {
+  final isDocker = Platform.environment['DOCKER'] == 'TRUE';
+
+  if (isDocker) {
+    arguments = ['/config/config.toml'];
+  } else if (arguments.isEmpty) {
     logger.error('Please specify a config file for this node.');
     exit(1);
   }
+
+  final rust = initializeExternalLibrary(
+    isDocker
+        ? '/app/librust.so'
+        : (Platform.isWindows
+            ? './rust.dll'
+            : './librust.so'),
+  );
+  final crypto = RustCryptoImplementation(rust);
+
   final file = File(arguments[0]);
   if (!file.existsSync()) {
-    logger.error('File ${file.path} does not exist');
-    exit(1);
+    final seed = crypto.generateRandomBytes(32);
+    file.createSync(recursive: true);
+    file.writeAsStringSync(
+      (isDocker ? defaultConfigDocker : defaultConfig).replaceFirst(
+        '"AUTOMATICALLY_GENERATED_ON_FIRST_START"',
+        '"${base64Url.encode(seed)}"',
+      ),
+    );
   }
 
   logger.info('');
   logger.info('s5-dart'.green().bold() + ' ' + 'v$nodeVersion'.red().bold());
   logger.info('');
-
-  final rust = initializeExternalLibrary(
-    Platform.isWindows
-        ? 'rust/target/release/rust.dll'
-        : 'rust/target/release/librust.so',
-  );
-  final crypto = RustCryptoImplementation(rust);
-
-  if (file
-      .readAsStringSync()
-      .contains('"AUTOMATICALLY_GENERATED_ON_FIRST_START"')) {
-    logger.info('Generating seed...');
-    final seed = crypto.generateRandomBytes(32);
-
-    file.writeAsStringSync(
-      file.readAsStringSync().replaceFirst(
-            '"AUTOMATICALLY_GENERATED_ON_FIRST_START"',
-            '"${base64Url.encode(seed)}"',
-          ),
-    );
-  }
 
   final config = (await TomlDocument.load(file.path)).toMap();
 
@@ -70,69 +68,56 @@ void main(List<String> arguments) async {
   );
 }
 
-class RustCryptoImplementation extends CryptoImplementation {
-  final Rust rust;
+const defaultConfig = '''# ! Documentation: https://docs.s5.ninja/install/config
 
-  RustCryptoImplementation(this.rust);
+name = "my-s5-node"
 
-  final ed25519 = Ed25519();
-  final _defaultSecureRandom = Random.secure();
+[keypair]
+seed = "AUTOMATICALLY_GENERATED_ON_FIRST_START"
 
-  @override
-  Uint8List generateRandomBytes(int length) {
-    final bytes = Uint8List(length);
+[cache] # Caches file objects that are uploaded, streamed or downloaded
+path = "/tmp/s5/cache"
 
-    for (var i = 0; i < bytes.length; i++) {
-      bytes[i] = _defaultSecureRandom.nextInt(256);
-    }
+[database] # Caches peer and object data (small)
+path = "data/hive"
 
-    return bytes;
-  }
+[http.api]
+port = 5050
 
-  @override
-  Future<Uint8List> hashBlake3(Uint8List input) {
-    return rust.hashBlake3(input: input);
-  }
+[http.api.delete]
+enabled = false
 
-  @override
-  Future<KeyPairEd25519> newKeyPairEd25519({required Uint8List seed}) async {
-    final keyPair = await ed25519.newKeyPairFromSeed(seed);
-    final pk = (await keyPair.extractPublicKey()).bytes;
-    return KeyPairEd25519(Uint8List.fromList(seed + pk));
-  }
+[p2p.peers]
+initial = [
+  'tcp://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@199.247.20.119:4444', # s5.garden
+  'tcp://z2DWuPbL5pweybXnEB618pMnV58ECj2VPDNfVGm3tFqBvjF@116.203.139.40:4444', # s5.ninja
+]
+''';
 
-  @override
-  Future<Uint8List> signEd25519({
-    required KeyPairEd25519 kp,
-    required Uint8List message,
-  }) async {
-    final signature = await ed25519.sign(
-      message,
-      keyPair: SimpleKeyPairData(kp.extractBytes().sublist(0, 32),
-          publicKey: SimplePublicKey(
-            kp.extractBytes().sublist(32),
-            type: KeyPairType.ed25519,
-          ),
-          type: KeyPairType.ed25519),
-    );
-    return Uint8List.fromList(signature.bytes);
-  }
+const defaultConfigDocker =
+    '''# ! Documentation: https://docs.s5.ninja/install/config
 
-  @override
-  Future<bool> verifyEd25519({
-    required Uint8List pk,
-    required Uint8List message,
-    required Uint8List signature,
-  }) async {
-    return ed25519.verify(
-      message,
-      signature: Signature(
-        signature,
-        publicKey: SimplePublicKey(
-          pk,
-          type: KeyPairType.ed25519,
-        ),
-      ),
-    );
-  }
-}
+name = "my-s5-node"
+
+[keypair]
+seed = "AUTOMATICALLY_GENERATED_ON_FIRST_START"
+
+[cache] # Caches file objects that are uploaded, streamed or downloaded
+path = "/cache"
+
+[database] # Caches peer and object data (small)
+path = "/db"
+
+[http.api]
+port = 5050
+bind = '0.0.0.0'
+
+[http.api.delete]
+enabled = false
+
+[p2p.peers]
+initial = [
+  'tcp://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@199.247.20.119:4444', # s5.garden
+  'tcp://z2DWuPbL5pweybXnEB618pMnV58ECj2VPDNfVGm3tFqBvjF@116.203.139.40:4444', # s5.ninja
+]
+''';

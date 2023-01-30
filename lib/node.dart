@@ -117,6 +117,7 @@ class S5Node {
           secretKey: s3Config['secretKey'],
         ),
         s3Config['bucket'],
+        cdnUrls: s3Config['cdnUrls'] ?? [],
       );
     }
 
@@ -153,6 +154,10 @@ class S5Node {
         crypto: crypto,
       );
     } */
+
+    if (store == null) {
+      exposeStore = false;
+    }
 
     await p2p.start();
 
@@ -376,7 +381,7 @@ class S5Node {
     final p = Packer();
 
     p.packInt(metadataMagicByte);
-    p.packInt(metadataTypeDirectory);
+    p.packInt(metadataTypeWebApp);
 
     p.packString(dirname);
 
@@ -427,7 +432,7 @@ class S5Node {
 
     final cid = await uploadRawFile(p.takeBytes());
 
-    return CID(cidTypeMetadataDirectory, cid.hash);
+    return CID(cidTypeMetadataWebApp, cid.hash);
   }
 
   Future<void> deleteFile(CID cid) async {
@@ -486,8 +491,8 @@ class S5Node {
 
       if (cid.type == cidTypeMetadataMedia) {
         metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
-      } else if (cid.type == cidTypeMetadataDirectory) {
-        metadata = deserializeDirectoryMetadata(bytes);
+      } else if (cid.type == cidTypeMetadataWebApp) {
+        metadata = deserializeWebAppMetadata(bytes);
       } else {
         throw 'Unsupported metadata format';
       }

@@ -139,14 +139,14 @@ class AccountsService {
       }
       final response = base64UrlNoPaddingDecode(data['response']);
 
-      if (response.length != 96) {
+      if (response.length != 65) {
         throw 'Invalid response';
       }
       // TODO Validate other parts of response
 
       final isCorrectChallenge = areBytesEqual(
         challenge,
-        response.sublist(0, 32),
+        response.sublist(1, 33),
       );
 
       if (!isCorrectChallenge) {
@@ -212,13 +212,13 @@ class AccountsService {
       }
       final response = base64UrlNoPaddingDecode(data['response']);
 
-      if (response.length != 96) {
+      if (response.length != 65) {
         throw 'Invalid response';
       }
       // TODO Validate other parts of response
 
       final isCorrectChallenge =
-          areBytesEqual(challenge, response.sublist(0, 32));
+          areBytesEqual(challenge, response.sublist(1, 33));
 
       if (!isCorrectChallenge) {
         throw 'Invalid challenge';
@@ -370,6 +370,7 @@ WHERE user_id = ?''', [id]);
     return sql.db.insert('User', {
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'email': email,
+      'tier': 1,
     });
   }
 

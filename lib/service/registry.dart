@@ -96,11 +96,11 @@ class RegistryService {
 
     for (final p in node.p2p.peers.values) {
       if (receivedFrom == null) {
-        p.socket.add(updateMessage);
+        p.sendMessage(updateMessage);
       } else {
         if (p.id != receivedFrom.id &&
             !receivedFrom.connectedPeers.contains(p.id)) {
-          p.socket.add(updateMessage);
+          p.sendMessage(updateMessage);
         }
       }
     }
@@ -117,7 +117,7 @@ class RegistryService {
     // TODO Use shard system
 
     for (final peer in node.p2p.peers.values) {
-      peer.socket.add(req);
+      peer.sendMessage(req);
     }
   }
 
@@ -164,9 +164,9 @@ class RegistryService {
       final u = Unpacker(db.get(key)!);
       return SignedRegistryEntry(
         pk: pk,
-        data: Uint8List.fromList(u.unpackBinary()),
+        data: u.unpackBinary(),
         revision: u.unpackInt()!,
-        signature: Uint8List.fromList(u.unpackBinary()),
+        signature: u.unpackBinary(),
       );
     }
     return null;
