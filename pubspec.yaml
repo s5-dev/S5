@@ -1,7 +1,7 @@
 name: s5_server
 description: proof of concept implementation of a new storage network
 publish_to: none
-version: 0.7.0
+version: 0.7.2
 
 environment:
   sdk: ">=2.18.2 <3.0.0"
@@ -30,7 +30,7 @@ dependencies:
   pool: ^1.5.1
   sqflite_common_ffi: ^2.2.0+1
   ffi: ^2.0.1
-  flutter_rust_bridge: ^1.56.0
+  flutter_rust_bridge: ^1.62.0
   # ! disabled because the arweave-dart library is licensed GPL-2.0 and this repo is MIT
   # arweave:
   #   git: https://github.com/ardriveapp/arweave-dart.git
