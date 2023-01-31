@@ -32,7 +32,7 @@ pub fn wire_hash_blake3(port_: MessagePort, input: Box<[u8]>) {
 }
 
 #[wasm_bindgen]
-pub fn wire_hash_blake3_sync(input: Box<[u8]>) -> support::WireSyncReturnStruct {
+pub fn wire_hash_blake3_sync(input: Box<[u8]>) -> support::WireSyncReturn {
     wire_hash_blake3_sync_impl(input)
 }
 

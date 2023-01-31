@@ -32,9 +32,7 @@ pub extern "C" fn wire_hash_blake3(port_: i64, input: *mut wire_uint_8_list) {
 }
 
 #[no_mangle]
-pub extern "C" fn wire_hash_blake3_sync(
-    input: *mut wire_uint_8_list,
-) -> support::WireSyncReturnStruct {
+pub extern "C" fn wire_hash_blake3_sync(input: *mut wire_uint_8_list) -> support::WireSyncReturn {
     wire_hash_blake3_sync_impl(input)
 }
 
@@ -113,8 +111,8 @@ impl<T> NewWithNullPtr for *mut T {
 // Section: sync execution mode utility
 
 #[no_mangle]
-pub extern "C" fn free_WireSyncReturnStruct(val: support::WireSyncReturnStruct) {
+pub extern "C" fn free_WireSyncReturn(ptr: support::WireSyncReturn) {
     unsafe {
-        let _ = support::vec_from_leak_ptr(val.ptr, val.len);
-    }
+        let _ = support::box_from_leak_ptr(ptr);
+    };
 }
