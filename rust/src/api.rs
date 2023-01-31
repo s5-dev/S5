@@ -1,7 +1,7 @@
 use blake3::Hash;
 
 use chacha20poly1305::{
-    aead::{generic_array::GenericArray, Aead, KeyInit, OsRng},
+    aead::{generic_array::GenericArray, Aead, KeyInit},
     XChaCha20Poly1305, XNonce,
 };
 use flutter_rust_bridge::{support::from_vec_to_array, SyncReturn};
@@ -14,7 +14,7 @@ pub fn encrypt_xchacha20poly1305(
     plaintext: Vec<u8>,
 ) -> Result<Vec<u8>, anyhow::Error> {
     let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(&key));
-    let mut xnonce = XNonce::from_slice(&nonce);
+    let xnonce = XNonce::from_slice(&nonce);
     let ciphertext = cipher.encrypt(&xnonce, &plaintext[..]);
     Ok(ciphertext.unwrap())
 }
@@ -25,7 +25,7 @@ pub fn decrypt_xchacha20poly1305(
     ciphertext: Vec<u8>,
 ) -> Result<Vec<u8>, anyhow::Error> {
     let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(&key));
-    let mut xnonce = XNonce::from_slice(&nonce);
+    let xnonce = XNonce::from_slice(&nonce);
 
     let plaintext = cipher.decrypt(&xnonce, &ciphertext[..]);
     Ok(plaintext.unwrap())
