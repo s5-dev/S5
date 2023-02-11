@@ -15,30 +15,32 @@ class DownloadUriProvider {
   List<NodeID> availableNodes = [];
   late final Map<NodeID, Uri> uris;
 
+  late DateTime timeout;
+
   bool isTimedOut = false;
 
   void start() async {
     uris = node.getDownloadUrisFromDB(hash);
-    if (!uris.containsKey(node.p2p.localNodeId)) {
-      await node.fetchHashLocally(hash);
-    }
+
     availableNodes = uris.keys.toList();
     node.p2p.sortNodesByScore(availableNodes);
 
-    final timeout = DateTime.now().add(timeoutDuration);
+    if (uris.isEmpty) {
+      await node.fetchHashLocally(hash);
+    }
 
-    _waitUntilIsWaiting(); // TODO This could run forever
+    timeout = DateTime.now().add(timeoutDuration);
 
     bool requestSent = false;
 
     while (true) {
       final newUris = node.getDownloadUrisFromDB(hash);
-      bool hasNewNode = false;
 
-      if (newUris.isEmpty && !requestSent) {
+      if (availableNodes.isEmpty && newUris.isEmpty && !requestSent) {
         node.p2p.sendHashRequest(hash);
         requestSent = true;
       }
+      bool hasNewNode = false;
 
       for (final e in newUris.entries) {
         if (uris.containsKey(e.key)) {
@@ -63,18 +65,20 @@ class DownloadUriProvider {
         isTimedOut = true;
         return;
       }
-    }
-  }
-
-  Future<void> _waitUntilIsWaiting() async {
-    while (isWaitingForUri == false) {
-      await Future.delayed(Duration(milliseconds: 1));
+      while (availableNodes.isNotEmpty || !isWaitingForUri) {
+        await Future.delayed(Duration(milliseconds: 10));
+        if (DateTime.now().isAfter(timeout)) {
+          isTimedOut = true;
+          return;
+        }
+      }
     }
   }
 
   bool isWaitingForUri = false;
 
   Future<DownloadURI> next() async {
+    timeout = DateTime.now().add(timeoutDuration);
     while (true) {
       if (availableNodes.isNotEmpty) {
         isWaitingForUri = false;

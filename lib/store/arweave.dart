@@ -1,13 +1,10 @@
-// ! Arweave is disabled, see pubspec.yaml
-/* 
-import 'dart:convert';
+/* import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:arweave/arweave.dart';
 import 'package:arweave/utils.dart';
 import 'package:http/http.dart';
-import 'package:minio/minio.dart';
-import 'package:s5_server/model/multihash.dart';
+import 'package:lib5/lib5.dart';
 
 import 'base.dart';
 
@@ -16,7 +13,7 @@ const publicGateways = [
   'https://arweave.dev',
   'https://node1.bundlr.network',
   'https://node2.bundlr.network',
-  'https://gateway.redstone.finance/',
+  'https://gateway.redstone.finance',
 ];
 
 class ArweaveObjectStore extends ObjectStore {
@@ -31,24 +28,30 @@ class ArweaveObjectStore extends ObjectStore {
 
   @override
   Future<bool> contains(Multihash hash) async {
+    print(transactionHashCache);
     final res = await getTransactionIdForHash(hash);
     return res != null;
   }
 
   @override
-  Future<void> put(Multihash hash, Stream<Uint8List> data) async {
+  Future<void> put(
+    Multihash hash,
+    Stream<Uint8List> data,
+    int length,
+  ) async {
     if (await contains(hash)) {
       return;
     }
+    print('put');
 
-    var bytes = Uint8List(0);
+    final bytes = <int>[];
     await for (final chunk in data) {
-      bytes = Uint8List.fromList(bytes + chunk);
+      bytes.addAll(chunk);
     }
 
     final transaction = await client.transactions.prepare(
       Transaction.withBlobData(
-        data: bytes,
+        data: Uint8List.fromList(bytes),
       ),
       wallet,
     );
@@ -70,32 +73,32 @@ class ArweaveObjectStore extends ObjectStore {
       // TODO progress updates
     }
 
-    transactionHashCache[hash.key] = transaction.id;
+    transactionHashCache[hash] = transaction.id;
   }
 
   @override
   Future<String> provide(Multihash hash) async {
     final id = await getTransactionIdForHash(hash);
-    return 'https://arweave.net/$id';
+    return client.api.gatewayUrl.resolve(id!).toString();
   }
 
-  final transactionHashCache = <String, String>{};
+  final transactionHashCache = <Multihash, String>{};
 
   Future<String?> getTransactionIdForHash(Multihash hash) async {
-    if (transactionHashCache.containsKey(hash.key)) {
-      return transactionHashCache[hash.key]!;
+    if (transactionHashCache.containsKey(hash)) {
+      return transactionHashCache[hash]!;
     }
     final res = await queryForHash(hash);
     if (res.isEmpty) {
       return null;
     }
-    
+
     // TODO Sort by timestamp
     // TODO Check size
     // TODO Check owner address (opt-in, only use own address by default)
 
     final id = res.first['node']['id'];
-    transactionHashCache[hash.key] = id;
+    transactionHashCache[hash] = id;
     return id;
   }
 

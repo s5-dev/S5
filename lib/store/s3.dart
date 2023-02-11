@@ -49,7 +49,11 @@ class S3ObjectStore extends ObjectStore {
   }
 
   @override
-  Future<void> put(Multihash hash, Stream<Uint8List> data) async {
+  Future<void> put(
+    Multihash hash,
+    Stream<Uint8List> data,
+    int length,
+  ) async {
     if (await contains(hash)) {
       return;
     }

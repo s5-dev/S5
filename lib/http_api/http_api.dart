@@ -204,7 +204,7 @@ class HttpAPIServer {
 
       final cid = CID.decode(req.params['cid']);
 
-      await node.pinFile(
+      await node.pinCID(
         cid,
         user: auth.user,
       );

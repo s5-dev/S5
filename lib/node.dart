@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:cancellation_token/cancellation_token.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
 import 'package:lib5/constants.dart';
@@ -101,6 +102,7 @@ class S5Node {
     final localConfig = config['store']?['local'];
     final siaConfig = config['store']?['sia'];
     final arweaveConfig = config['store']?['arweave'];
+    final estuaryConfig = config['store']?['estuary'];
 
     if (s3Config != null &&
         localConfig != null &&
@@ -117,12 +119,11 @@ class S5Node {
           secretKey: s3Config['secretKey'],
         ),
         s3Config['bucket'],
-        cdnUrls: s3Config['cdnUrls'] ?? [],
+        cdnUrls: s3Config['cdnUrls']?.cast<String>() ?? <String>[],
       );
     }
 
-    // ! Arweave is disabled, see pubspec.yaml
-/*     if (arweaveConfig != null) {
+    /* if (arweaveConfig != null) {
       store = ArweaveObjectStore(
         Arweave(
           gatewayUrl: Uri.parse(
@@ -137,7 +138,8 @@ class S5Node {
       );
 
       logger.info(
-          'Using Arweave wallet ${await (store as ArweaveObjectStore).wallet.getAddress()}');
+        'Using Arweave wallet ${await (store as ArweaveObjectStore).wallet.getAddress()}',
+      );
     } */
 
     if (localConfig != null) {
@@ -146,7 +148,16 @@ class S5Node {
         localConfig['http'],
       );
     }
-/*     if (siaConfig != null) {
+
+    /* if (estuaryConfig != null) {
+      store = EstuaryObjectStore(
+        apiUrl: estuaryConfig['apiUrl'] ?? 'https://api.estuary.tech',
+        apiKey: estuaryConfig['apiKey'],
+        httpClient: client,
+      );
+    } */
+
+    /* if (siaConfig != null) {
       store = SiaObjectStore(
         siaConfig['renterd_api_addr']!,
         siaConfig['renterd_api_password']!,
@@ -324,12 +335,22 @@ class S5Node {
         .toList();
   }
 
-  void addDownloadUri(Multihash hash, NodeID nodeId, String url, int ttl) {
+  void addDownloadUri(
+    Multihash hash,
+    NodeID nodeId,
+    String url,
+    int ttl, {
+    Uint8List? message,
+  }) {
     final val = objectsBox.get(hash.toBase64Url()) ?? {};
-    val[nodeId.toBase58()] = {
+    final map = {
       'uri': url,
       'ttl': ttl,
     };
+    if (message != null) {
+      map['msg'] = base64UrlNoPaddingEncode(message);
+    }
+    val[nodeId.toBase58()] = map;
     objectsBox.put(hash.toBase64Url(), val);
   }
 
@@ -367,6 +388,7 @@ class S5Node {
           p2p.localNodeId,
           url,
           DateTime.now().add(Duration(hours: 1)).millisecondsSinceEpoch,
+          message: await p2p.prepareProvideMessage(hash, url),
         );
       }
     }
@@ -448,34 +470,127 @@ class S5Node {
     await store?.delete(hash);
   }
 
-  Future<void> pinFile(CID cid, {User? user}) async {
-    if (cid.type == cidTypeRaw) {
-      await pinHash(cid.hash, user: user);
-    } else {
-      throw 'Can\'t pin this type of CID';
-    }
-  }
-
-  Future<void> pinHash(Multihash hash, {User? user}) async {
-    if (await store!.contains(hash)) {
+  Future<void> pinCID(CID cid, {User? user}) async {
+    if (await store!.contains(cid.hash)) {
       if (user != null) {
         await accounts!.addObjectPinToUser(
           user: user,
-          hash: hash,
+          hash: cid.hash,
           size: 0,
         );
       }
       return;
     }
-    final bytes = await downloadBytesByHash(hash);
-    await store!.put(hash, Stream.value(bytes));
+
+    final cacheFile = File(
+      join(
+        cachePath,
+        'download',
+        Multihash(crypto.generateRandomBytes(32)).toBase32(),
+        'file',
+      ),
+    );
+    cacheFile.createSync(recursive: true);
+
+    await downloadFileByHash(
+      hash: cid.hash,
+      outputFile: cacheFile,
+      size: cid.size,
+    );
+
+    final newCID = await uploadLocalFile(cacheFile);
+
+    if (cid.hash != newCID.hash) {
+      throw 'Hash mismatch (${cid.hash} != ${newCID.hash})';
+    }
 
     if (user != null) {
       await accounts!.addObjectPinToUser(
         user: user,
-        hash: hash,
-        size: bytes.length,
+        hash: cid.hash,
+        size: cacheFile.lengthSync(),
       );
+    }
+    await cacheFile.delete();
+  }
+
+  Future<void> downloadFileByHash({
+    required Multihash hash,
+    required File outputFile,
+    int? size,
+    Function? onProgress,
+    CancellationToken? cancelToken,
+  }) async {
+    final sink = outputFile.openWrite();
+
+    final dlUriProvider = DownloadUriProvider(
+      this,
+      hash,
+    );
+
+    dlUriProvider.start();
+
+    int progress = 0;
+
+    try {
+      final dlUri = await dlUriProvider.next();
+
+      final request = Request('GET', dlUri.uri);
+
+      if (size != null) {
+        request.headers['range'] = 'bytes=$progress-${size - 1}';
+      }
+
+      final response = await client.send(request);
+
+      if (response.statusCode != 206) {
+        throw 'HTTP ${response.statusCode}';
+      }
+
+      final completer = Completer();
+
+      final sub = response.stream.listen(
+        (chunk) {
+          progress += chunk.length;
+          if (onProgress != null) {
+            onProgress(size == null ? null : progress / size);
+          }
+
+          sink.add(chunk);
+        },
+        onError: (e) {
+          completer.completeError(e);
+        },
+        onDone: () {
+          completer.complete();
+        },
+      );
+
+      if (cancelToken != null) {
+        CancellableCompleter(cancelToken, onCancel: () {
+          sub.cancel();
+          completer.complete();
+        });
+      }
+
+      await completer.future;
+
+      final b3hash = await rust.hashBlake3File(path: outputFile.path);
+      final localFileHash =
+          Multihash(Uint8List.fromList([mhashBlake3Default] + b3hash));
+
+      if (hash != localFileHash) {
+        throw 'Hash mismatch';
+      }
+
+      if (cancelToken?.isCancelled ?? false) {
+        await sink.close();
+        await outputFile.delete();
+
+        throw CancelledException();
+      }
+    } catch (e, st) {
+      rethrow;
     }
   }
 
@@ -523,6 +638,9 @@ class S5Node {
         baoResult,
         data.length,
       ),
+      data.length <= defaultChunkSize
+          ? data.length
+          : data.length + baoResult.outboard.length + 16,
     );
 
     return CID(
@@ -585,6 +703,7 @@ class S5Node {
     await store!.put(
       hash,
       _uploadRawFile(file, baoResult, size),
+      size <= defaultChunkSize ? size : size + baoResult.outboard.length + 16,
     );
 
     return CID(

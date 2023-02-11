@@ -13,11 +13,11 @@ import 'package:s5_server/logger/console.dart';
 import 'ffi.io.dart';
 
 void main(List<String> arguments) async {
-  final logger = ConsoleLogger(
-    format: true,
-  );
-
   final isDocker = Platform.environment['DOCKER'] == 'TRUE';
+
+  final logger = ConsoleLogger(
+    format: !isDocker,
+  );
 
   if (isDocker) {
     arguments = ['/config/config.toml'];
@@ -29,9 +29,7 @@ void main(List<String> arguments) async {
   final rust = initializeExternalLibrary(
     isDocker
         ? '/app/librust.so'
-        : (Platform.isWindows
-            ? './rust.dll'
-            : './librust.so'),
+        : (Platform.isWindows ? './rust.dll' : './librust.so'),
   );
   final crypto = RustCryptoImplementation(rust);
 

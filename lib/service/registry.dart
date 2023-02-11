@@ -55,14 +55,23 @@ class RegistryService {
     }
 
     final existingEntry = getFromDB(sre.pk);
-    if (existingEntry != null) {
-      if (existingEntry.revision >= sre.revision) {
-        // TODO broadcastEntry(existingEntry, null);
 
+    if (existingEntry != null) {
+      if (receivedFrom != null) {
+        if (existingEntry.revision == sre.revision) {
+          return;
+        } else if (existingEntry.revision > sre.revision) {
+          final updateMessage = prepareMessage(existingEntry);
+          receivedFrom.sendMessage(updateMessage);
+          return;
+        }
+      }
+
+      if (existingEntry.revision >= sre.revision) {
         throw 'Revision number too low';
       }
     }
-    final key = String.fromCharCodes(sre.pk);
+    final key = Multihash(sre.pk);
 
     streams[key]?.add(sre);
 
@@ -74,34 +83,19 @@ class RegistryService {
 
     await db.put(key, packer.takeBytes());
 
-    if (existingEntry != null) {
-      if (!areBytesEqual(existingEntry.data, sre.data)) {
-        // TODO First check if this hash is actually not referenced from other locations
-        // could cause data loss or be used for an attack
-        final bytes = existingEntry.data;
-        node.deleteHash(Multihash(bytes.sublist(2)));
-      }
-    }
-
     broadcastEntry(sre, receivedFrom);
   }
 
   // TODO Clean this table after some time
   // TODO final registryUpdateRoutingTable = <String, List<String>>{};
-
-  // TODO Only broadcast to subscribed nodes (routing table) and shard-nodes (256)
+  // TODO if there are more than X peers, only broadcast to subscribed nodes (routing table) and shard-nodes (256)
   void broadcastEntry(SignedRegistryEntry sre, Peer? receivedFrom) {
     node.logger.verbose('[registry] broadcastEntry');
     final updateMessage = prepareMessage(sre);
 
     for (final p in node.p2p.peers.values) {
-      if (receivedFrom == null) {
+      if (receivedFrom == null || p.id != receivedFrom.id) {
         p.sendMessage(updateMessage);
-      } else {
-        if (p.id != receivedFrom.id &&
-            !receivedFrom.connectedPeers.contains(p.id)) {
-          p.sendMessage(updateMessage);
-        }
       }
     }
   }
@@ -114,7 +108,7 @@ class RegistryService {
 
     final req = p.takeBytes();
 
-    // TODO Use shard system
+    // TODO Use shard system if there are more than X peers
 
     for (final peer in node.p2p.peers.values) {
       peer.sendMessage(req);
@@ -133,33 +127,47 @@ class RegistryService {
     return p.takeBytes();
   }
 
-  final streams = <String, StreamController<SignedRegistryEntry>>{};
+  final streams = <Multihash, StreamController<SignedRegistryEntry>>{};
 
   Future<SignedRegistryEntry?> get(Uint8List pk) async {
-    node.logger.verbose(
-      '[registry] get ${base64Url.encode(pk)}',
-    );
-
-    final res = getFromDB(pk);
-
-    if (res != null) {
-      return res;
+    final key = Multihash(pk);
+    if (streams.containsKey(key)) {
+      node.logger.verbose('[registry] get (subbed) $key');
+      final res = getFromDB(pk);
+      if (res != null) {
+        return res;
+      }
+      sendRegistryRequest(pk);
+      await Future.delayed(Duration(milliseconds: 200));
+      return getFromDB(pk);
+    } else {
+      sendRegistryRequest(pk);
+      streams[key] = StreamController<SignedRegistryEntry>.broadcast();
+      if (getFromDB(pk) == null) {
+        node.logger.verbose('[registry] get (clean) $key');
+        for (int i = 0; i < 200; i++) {
+          await Future.delayed(Duration(milliseconds: 10));
+          if (getFromDB(pk) != null) break;
+        }
+      } else {
+        node.logger.verbose('[registry] get (cached) $key');
+        await Future.delayed(Duration(milliseconds: 200));
+      }
+      return getFromDB(pk);
     }
-    sendRegistryRequest(pk);
-    return null;
-    // TODO Improve to wait a bit if not already subbed
   }
 
   Stream<SignedRegistryEntry> listen(Uint8List pk) {
-    final key = String.fromCharCodes(pk);
+    final key = Multihash(pk);
     if (!streams.containsKey(key)) {
       streams[key] = StreamController<SignedRegistryEntry>.broadcast();
+      sendRegistryRequest(pk);
     }
     return streams[key]!.stream;
   }
 
   SignedRegistryEntry? getFromDB(Uint8List pk) {
-    final key = String.fromCharCodes(pk);
+    final key = Multihash(pk);
     if (db.containsKey(key)) {
       final u = Unpacker(db.get(key)!);
       return SignedRegistryEntry(

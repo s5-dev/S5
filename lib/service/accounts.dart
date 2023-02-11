@@ -8,7 +8,7 @@ import 'package:lib5/util.dart';
 import 'package:s5_server/accounts/user.dart';
 import 'package:s5_server/logger/base.dart';
 import 'package:s5_server/service/sql.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:messagepack/messagepack.dart';
 
 class AuthResponse {
   final User? user;
@@ -321,6 +321,32 @@ class AccountsService {
         "stats": stats,
       };
     });
+
+    app.get('/api/user/pins.bin', (req, res) async {
+      final auth = await checkAuth(req, 'account/api/user/pins');
+      if (auth.denied) return res.unauthorized(auth);
+
+      final cursor = await getObjectPinsCursorForUser(user: auth.user!);
+      final pins = await getObjectPinsForUser(
+        user: auth.user!,
+        afterCursor: int.parse(
+          req.uri.queryParameters['cursor'] ?? '0',
+        ),
+      );
+
+      final packer = Packer();
+
+      packer.packInt(0);
+      packer.packInt(cursor);
+
+      packer.packListLength(pins.length);
+      for (final p in pins) {
+        packer.packBinary(p.fullBytes);
+      }
+
+      res.add(packer.takeBytes());
+      res.close();
+    });
   }
 
   Future<Map> getStatsForUser(int id) async {
@@ -335,6 +361,35 @@ WHERE user_id = ?''', [id]);
         "usedStorage": res.first['used_storage'] ?? 0,
       },
     };
+  }
+
+  Future<int> getObjectPinsCursorForUser({
+    required User user,
+  }) async {
+    final cursorRes = await sql.db.query(
+      'Pin',
+      columns: ['created_at'],
+      where: 'user_id = ?',
+      whereArgs: [user.id],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+
+    return cursorRes.first['created_at'] as int;
+  }
+
+  Future<List<Multihash>> getObjectPinsForUser({
+    required User user,
+    int afterCursor = 0,
+  }) async {
+    final res = await sql.db.rawQuery(
+      '''SELECT object_hash
+FROM Pin
+WHERE user_id = ? AND created_at >= ?''',
+      [user.id, afterCursor],
+    );
+
+    return res.map((e) => Multihash(e['object_hash'] as Uint8List)).toList();
   }
 
   Future<void> addObjectPinToUser({

@@ -62,8 +62,6 @@ class Peer {
 
   bool isConnected = false;
 
-  final connectedPeers = <NodeID>{};
-
   late final Uint8List challenge;
 
   Peer(
@@ -97,7 +95,7 @@ class P2PService {
   final List<Uri> selfConnectionUris = [];
 
   // TODO clean this table after a while (default 1 hour)
-  final hashQueryRoutingTable = <Multihash, List<NodeID>>{};
+  final hashQueryRoutingTable = <Multihash, Set<NodeID>>{};
 
   Future<void> init() async {
     localNodeId = NodeID(nodeKeyPair.publicKey);
@@ -175,11 +173,7 @@ class P2PService {
             data: u.unpackBinary(),
             signature: u.unpackBinary(),
           );
-          try {
-            await node.registry.set(sre, receivedFrom: peer);
-          } catch (e) {
-            // TODO Do not throw error, when receiving an invalid entry is normal
-          }
+          await node.registry.set(sre, receivedFrom: peer);
           return;
         }
 
@@ -243,11 +237,15 @@ class P2PService {
                 sm.nodeId,
                 str,
                 ttl,
+                message: event,
               );
             }
 
-            final list = hashQueryRoutingTable[hash] ?? [];
+            final list = hashQueryRoutingTable[hash] ?? <NodeID>{};
             for (final peerId in list) {
+              if (peerId == sm.nodeId) continue;
+              if (peerId == peer.id) continue;
+
               if (peers.containsKey(peerId)) {
                 try {
                   peers[peerId]!.sendMessage(event);
@@ -256,8 +254,8 @@ class P2PService {
                 }
               }
             }
+            hashQueryRoutingTable.remove(hash);
           } else if (method2 == protocolMethodAnnouncePeers) {
-            peer.connectedPeers.clear();
             final length = u.unpackInt()!;
             for (int i = 0; i < length; i++) {
               final peerIdBinary = u.unpackBinary();
@@ -265,9 +263,6 @@ class P2PService {
 
               final isConnected = u.unpackBool()!;
 
-              if (isConnected) {
-                peer.connectedPeers.add(id);
-              }
               final connectionUrisCount = u.unpackInt()!;
 
               final connectionUris = <Uri>[];
@@ -290,15 +285,33 @@ class P2PService {
           final hash = Multihash(u.unpackBinary());
 
           final contains = node.exposeStore && await node.store!.contains(hash);
+
           if (!contains) {
+            try {
+              final map = node.getDownloadUrisFromDB(hash);
+
+              if (map.isNotEmpty) {
+                final availableNodes = map.keys.toList();
+                sortNodesByScore(availableNodes);
+                final entry = node.objectsBox
+                    .get(hash.toBase64Url())![availableNodes.first];
+
+                peer.sendMessage(base64UrlNoPaddingDecode(entry['msg']));
+
+                return;
+              }
+            } catch (e, st) {
+              logger.catched(e, st);
+            }
+
             if (hashQueryRoutingTable.containsKey(hash)) {
               if (!hashQueryRoutingTable[hash]!.contains(peer.id)) {
                 hashQueryRoutingTable[hash]!.add(peer.id);
               }
             } else {
-              hashQueryRoutingTable[hash] = [peer.id];
+              hashQueryRoutingTable[hash] = <NodeID>{peer.id};
               for (final p in peers.values) {
-                if (p.id != peer.id && !peer.connectedPeers.contains(p.id)) {
+                if (p.id != peer.id) {
                   p.sendMessage(event);
                 }
               }
@@ -311,15 +324,7 @@ class P2PService {
 
           logger.verbose('[providing] $hash');
 
-          final p = Packer();
-          p.packInt(protocolMethodHashQueryResponse);
-          p.packBinary(hash.fullBytes);
-          p.packInt(
-            DateTime.now().add(Duration(hours: 1)).millisecondsSinceEpoch,
-          );
-          p.packString(result);
-
-          peer.sendMessage(await signMessage(p.takeBytes()));
+          peer.sendMessage(await prepareProvideMessage(hash, result));
         } else if (method == protocolMethodRegistryQuery) {
           final pk = u.unpackBinary();
           final sre = node.registry.getFromDB(pk);
@@ -348,6 +353,18 @@ class P2PService {
     peer.sendMessage(initialAuthPayloadPacker.takeBytes());
 
     return completer.future;
+  }
+
+  Future<Uint8List> prepareProvideMessage(Multihash hash, String uri) async {
+    final p = Packer();
+    p.packInt(protocolMethodHashQueryResponse);
+    p.packBinary(hash.fullBytes);
+    p.packInt(
+      DateTime.now().add(Duration(hours: 1)).millisecondsSinceEpoch,
+    );
+    p.packString(uri);
+
+    return await signMessage(p.takeBytes());
   }
 
   void sendPublicPeersToPeer(Peer peer, Iterable<Peer> peersToSend) async {
@@ -434,6 +451,7 @@ class P2PService {
 
     p.packInt(protocolMethodHashQuery);
     p.packBinary(hash.fullBytes);
+    // TODO Maybe add int for hop count (or not because privacy concerns)
 
     final req = p.takeBytes();
 
