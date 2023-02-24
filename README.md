@@ -51,7 +51,7 @@ For example a 10 GB file is by default stored as one raw block, and an additiona
 
 Another difference is that the S5 protocol never transfers file data between nodes, instead the delivery itself is outsourced to the HTTP protocol. This makes it significantly easier to leverage existing storage providers to deliver content efficiently instead of having to optimize implementations of a new protocol like bitswap.
 
-Example: You want to download a file with the CID `z5W7Bf74oMS4JU4CvM6Vt3U7BfRY4rMi49MYrhtPVEe7CNLUG`. First, your node checks if it already has download urls for that CID's hash in your local cache. If not, it sends a query to all connected nodes. Another connected node that uses a S3 storage backend then checks if it has the hash stored there. If yes, it generates a pre-signed S3 download url and sends it back to the node that asked for it. This routing also works over multiple nodes. As soon as the original node receives a valid response, it tries to download/stream the file directly from the S3 endpoint but still verifies the integrity of every byte. This way it's possible to deliver files extremely efficiently leveraging existing infrastructure while still not having to trust any entity in the process.
+Example: You want to download a file with the CID `z5W7Bf74oMS4JU4CvM6Vt3U7BfRY4rMi49MYrhtPVEe7CNLUG` [^cids]. First, your node checks if it already has download urls for that CID's hash in your local cache. If not, it sends a query to all connected nodes. Another connected node that uses a S3 storage backend then checks if it has the hash stored there. If yes, it generates a pre-signed S3 download url and sends it back to the node that asked for it. This routing also works over multiple nodes. As soon as the original node receives a valid response, it tries to download/stream the file directly from the S3 endpoint but still verifies the integrity of every byte. This way it's possible to deliver files extremely efficiently leveraging existing infrastructure while still not having to trust any entity in the process.
 
 Responses from nodes are signed by their public key and every node keeps a local score for every other node it knows of. When a node provides a valid HTTP URL that also matches the hash, its score is increased, if not it's decreased. The score is used to decide which URL to try first if multiple nodes provide the same file.
 
@@ -69,3 +69,5 @@ S5 currently supports one protocol to establish a connection between nodes:
 - QUIC (planned)
 
 S5 also uses some more modern defaults compared to IPFS, for example the BLAKE3 hashing algorithm. This is of course not a design limitation of IPFS, just a nice side effect of S5 being built from scratch.
+
+[^cids]: Note S5 CIDs are not directly compatible with IPFS CIDs, but don't collide with them. S5 CIDs also encode the file size - Use https://cid.one/ to parse them.
