@@ -10,11 +10,7 @@ An implementation in Rust is planned.
 
 ## How to run the experimental S5-Dart node
 
-1. Make sure you are on a x86_64 Linux system
-2. Download the latest release: https://github.com/redsolver/S5/releases
-3. Make it executable
-4. Copy the `default_config.toml` file from this repo to your local system
-5. Start the node with `./s5-dart-... path/to/config.toml`
+`docker run -it --rm -p 5050:5050 -v /local/path/to/config:/config --name s5-node ghcr.io/s5-dev/node:0.9.2`
 
 ## Features
 
