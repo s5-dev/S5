@@ -1,17 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:convert/convert.dart';
 import 'package:hive/hive.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
 import 'package:messagepack/messagepack.dart';
+import 'package:s5_server/db/hive_key_value_db.dart';
 import 'package:tint/tint.dart';
 
 import 'package:s5_server/logger/base.dart';
-import 'package:s5_server/model/node_id.dart';
 import 'package:s5_server/model/signed_message.dart';
 import 'package:s5_server/node.dart';
 
@@ -71,7 +71,7 @@ class Peer {
 
   String renderLocationUri() {
     return connectionUris.isEmpty
-        ? _socket.address.address
+        ? _socket.remoteAddress.address
         : connectionUris.first.toString();
   }
 }
@@ -85,7 +85,7 @@ class P2PService {
 
   Logger get logger => node.logger;
 
-  late final Box<Map> nodesBox;
+  late final KeyValueDB nodesBox;
 
   late final NodeID localNodeId;
 
@@ -100,7 +100,7 @@ class P2PService {
   Future<void> init() async {
     localNodeId = NodeID(nodeKeyPair.publicKey);
 
-    nodesBox = await Hive.openBox('s5-nodes');
+    nodesBox = HiveKeyValueDB(await Hive.openBox('s5-nodes'));
   }
 
   Future<void> start() async {
@@ -150,31 +150,79 @@ class P2PService {
 
     final completer = Completer();
 
+    final supportedFeatures = 3; // 0b00000011
+
     peer.listenForMessages(
-      (event) async {
+      (Uint8List event) async {
         Unpacker u = Unpacker(event);
         final method = u.unpackInt();
         if (method == protocolMethodHandshakeOpen) {
           final p = Packer();
           p.packInt(protocolMethodHandshakeDone);
           p.packBinary(u.unpackBinary());
+          p.packInt(supportedFeatures);
           p.packInt(selfConnectionUris.length);
           for (final uri in selfConnectionUris) {
             p.packString(uri.toString());
           }
           // TODO Protocol version
           // p.packInt(protocolVersion);
-          peer.sendMessage(await signMessage(p.takeBytes()));
+          peer.sendMessage(await signMessageSimple(p.takeBytes()));
           return;
-        } else if (method == protocolMethodRegistryUpdate) {
-          final sre = SignedRegistryEntry(
-            pk: u.unpackBinary(),
-            revision: u.unpackInt()!,
-            data: u.unpackBinary(),
-            signature: u.unpackBinary(),
-          );
+        } else if (method == recordTypeRegistryEntry) {
+          final sre = node.registry.deserializeRegistryEntry(event);
           await node.registry.set(sre, receivedFrom: peer);
           return;
+        } else if (method == recordTypeStorageLocation) {
+          final hash = Multihash(event.sublist(1, 34));
+          final type = event[34];
+          final expiry = decodeEndian(event.sublist(35, 39));
+          final partCount = event[39];
+          final parts = <String>[];
+          int cursor = 40;
+          for (int i = 0; i < partCount; i++) {
+            final length = decodeEndian(event.sublist(cursor, cursor + 2));
+            cursor += 2;
+            parts.add(utf8.decode(event.sublist(cursor, cursor + length)));
+            cursor += length;
+          }
+          cursor++;
+
+          final publicKey = event.sublist(cursor, cursor + 33);
+          final signature = event.sublist(cursor + 33);
+
+          if (publicKey[0] != mkeyEd25519) {
+            throw 'Unsupported public key type $mkeyEd25519';
+          }
+
+          await node.crypto.verifyEd25519(
+            pk: publicKey.sublist(1),
+            message: event.sublist(0, cursor),
+            signature: signature,
+          );
+
+          final nodeId = NodeID(publicKey);
+          node.addStorageLocation(
+            hash,
+            nodeId,
+            StorageLocation(type, parts, expiry),
+            message: event,
+          );
+
+          final list = hashQueryRoutingTable[hash] ?? <NodeID>{};
+          for (final peerId in list) {
+            if (peerId == nodeId) continue;
+            if (peerId == peer.id) continue;
+
+            if (peers.containsKey(peerId)) {
+              try {
+                peers[peerId]!.sendMessage(event);
+              } catch (e, st) {
+                logger.catched(e, st);
+              }
+            }
+          }
+          hashQueryRoutingTable.remove(hash);
         }
 
         if (method == protocolMethodSignedMessage) {
@@ -201,8 +249,15 @@ class P2PService {
 
             peer.isConnected = true;
 
+            final supportedFeatures = u.unpackInt();
+
+            if (supportedFeatures != 3) {
+              throw 'Remote node does not support required features';
+            }
+
             peers[peer.id] = peer;
             reconnectDelay[peer.id] = 1;
+
             final connectionUrisCount = u.unpackInt()!;
 
             peer.connectionUris.clear();
@@ -224,37 +279,7 @@ class P2PService {
             }
 
             return;
-          } else if (method2 == protocolMethodHashQueryResponse) {
-            final hash = Multihash(u.unpackBinary());
-
-            final ttl = u.unpackInt()!;
-
-            final str = u.unpackString();
-
-            if (str != null) {
-              node.addDownloadUri(
-                hash,
-                sm.nodeId,
-                str,
-                ttl,
-                message: event,
-              );
-            }
-
-            final list = hashQueryRoutingTable[hash] ?? <NodeID>{};
-            for (final peerId in list) {
-              if (peerId == sm.nodeId) continue;
-              if (peerId == peer.id) continue;
-
-              if (peers.containsKey(peerId)) {
-                try {
-                  peers[peerId]!.sendMessage(event);
-                } catch (e, st) {
-                  logger.catched(e, st);
-                }
-              }
-            }
-            hashQueryRoutingTable.remove(hash);
+            /* } else if (method2 == protocolMethodHashQueryResponse) { */
           } else if (method2 == protocolMethodAnnouncePeers) {
             final length = u.unpackInt()!;
             for (int i = 0; i < length; i++) {
@@ -283,53 +308,68 @@ class P2PService {
           }
         } else if (method == protocolMethodHashQuery) {
           final hash = Multihash(u.unpackBinary());
+          final types = u.unpackList().cast<int>();
 
-          final contains = node.exposeStore && await node.store!.contains(hash);
+          try {
+            final map = node.getCachedStorageLocations(hash, types);
 
-          if (!contains) {
-            try {
-              final map = node.getDownloadUrisFromDB(hash);
+            if (map.isNotEmpty) {
+              final availableNodes = map.keys.toList();
+              sortNodesByScore(availableNodes);
 
-              if (map.isNotEmpty) {
-                final availableNodes = map.keys.toList();
-                sortNodesByScore(availableNodes);
-                final entry = node.objectsBox
-                    .get(hash.toBase64Url())![availableNodes.first];
+              final entry = map[availableNodes.first]!;
 
-                peer.sendMessage(base64UrlNoPaddingDecode(entry['msg']));
+              peer.sendMessage(entry.providerMessage);
 
-                return;
-              }
-            } catch (e, st) {
-              logger.catched(e, st);
+              return;
             }
+          } catch (e, st) {
+            logger.catched(e, st);
+          }
 
-            if (hashQueryRoutingTable.containsKey(hash)) {
-              if (!hashQueryRoutingTable[hash]!.contains(peer.id)) {
-                hashQueryRoutingTable[hash]!.add(peer.id);
-              }
-            } else {
-              hashQueryRoutingTable[hash] = <NodeID>{peer.id};
-              for (final p in peers.values) {
-                if (p.id != peer.id) {
-                  p.sendMessage(event);
-                }
-              }
-            }
+          final contains = node.exposeStore &&
+              await node.store!.canProvide(
+                hash,
+                types,
+              );
 
+          if (contains) {
+            final location = await node.store!.provide(hash, types);
+
+            final message = await prepareProvideMessage(hash, location);
+
+            node.addStorageLocation(
+              hash,
+              localNodeId,
+              location,
+              message: message,
+            );
+
+            logger.verbose('[providing] $hash');
+
+            peer.sendMessage(message);
             return;
           }
 
-          final result = await node.store!.provide(hash);
+          if (hashQueryRoutingTable.containsKey(hash)) {
+            if (!hashQueryRoutingTable[hash]!.contains(peer.id)) {
+              hashQueryRoutingTable[hash]!.add(peer.id);
+            }
+          } else {
+            hashQueryRoutingTable[hash] = <NodeID>{peer.id};
+            for (final p in peers.values) {
+              if (p.id != peer.id) {
+                p.sendMessage(event);
+              }
+            }
+          }
 
-          logger.verbose('[providing] $hash');
-
-          peer.sendMessage(await prepareProvideMessage(hash, result));
+          return;
         } else if (method == protocolMethodRegistryQuery) {
           final pk = u.unpackBinary();
           final sre = node.registry.getFromDB(pk);
           if (sre != null) {
-            peer.sendMessage(node.registry.prepareMessage(sre));
+            peer.sendMessage(node.registry.serializeRegistryEntry(sre));
           }
         }
       },
@@ -355,16 +395,27 @@ class P2PService {
     return completer.future;
   }
 
-  Future<Uint8List> prepareProvideMessage(Multihash hash, String uri) async {
-    final p = Packer();
-    p.packInt(protocolMethodHashQueryResponse);
-    p.packBinary(hash.fullBytes);
-    p.packInt(
-      DateTime.now().add(Duration(hours: 1)).millisecondsSinceEpoch,
-    );
-    p.packString(uri);
+  Future<Uint8List> prepareProvideMessage(
+      Multihash hash, StorageLocation location) async {
+    final list = [recordTypeStorageLocation] +
+        hash.fullBytes +
+        [location.type] +
+        encodeEndian(location.expiry, 4) +
+        [location.parts.length];
 
-    return await signMessage(p.takeBytes());
+    for (final part in location.parts) {
+      final bytes = utf8.encode(part);
+      list.addAll(encodeEndian(bytes.length, 2));
+      list.addAll(bytes);
+    }
+    list.add(0);
+
+    final signature = await node.crypto.signEd25519(
+      kp: nodeKeyPair,
+      message: Uint8List.fromList(list),
+    );
+
+    return Uint8List.fromList(list + nodeKeyPair.publicKey + signature);
   }
 
   void sendPublicPeersToPeer(Peer peer, Iterable<Peer> peersToSend) async {
@@ -380,7 +431,7 @@ class P2PService {
         p.packString(uri.toString());
       }
     }
-    peer.sendMessage(await signMessage(p.takeBytes()));
+    peer.sendMessage(await signMessageSimple(p.takeBytes()));
   }
 
   // TODO nodes with a score below 0.2 should be disconnected immediately and responses dropped
@@ -389,15 +440,38 @@ class P2PService {
     if (nodeId == localNodeId) {
       return 1;
     }
-    final p = nodesBox.get(nodeId.toBase58()) ?? {};
-    return calculateScore(p['+'] ?? 0, p['-'] ?? 0);
+    final node = nodesBox.get(nodeId.bytes);
+    if (node == null) {
+      return 0.5;
+    }
+    final map = Unpacker(node).unpackMap().cast<int, int>();
+    return calculateScore(map[1]!, map[2]!);
   }
 
-  void incrementScoreCounter(NodeID nodeId, String type) {
-    final p = nodesBox.get(nodeId.toBase58()) ?? {};
-    p[type] = (p[type] ?? 0) + 1;
+  void _vote(NodeID nodeId, bool upvote) {
+    final node = nodesBox.get(nodeId.bytes);
+    final map = node == null
+        ? <int, int>{1: 0, 2: 0}
+        : Unpacker(node).unpackMap().cast<int, int>();
 
-    nodesBox.put(nodeId.toBase58(), p);
+    if (upvote) {
+      map[1] = map[1]! + 1;
+    } else {
+      map[2] = map[2]! + 1;
+    }
+
+    nodesBox.set(
+      nodeId.bytes,
+      (Packer()..pack(map)).takeBytes(),
+    );
+  }
+
+  void upvote(NodeID nodeId) {
+    _vote(nodeId, true);
+  }
+
+  void downvote(NodeID nodeId) {
+    _vote(nodeId, false);
   }
 
   // TODO add a bit of randomness with multiple options
@@ -409,7 +483,8 @@ class P2PService {
     );
   }
 
-  Future<Uint8List> signMessage(Uint8List message) async {
+  // TODO Only used for the handshake, should be removed as soon as QUIC+TLS or WSS is used
+  Future<Uint8List> signMessageSimple(Uint8List message) async {
     final packer = Packer();
 
     final signature = await node.crypto.signEd25519(
@@ -446,11 +521,13 @@ class P2PService {
     );
   }
 
-  void sendHashRequest(Multihash hash) {
+  void sendHashRequest(Multihash hash,
+      [List<int> types = const [storageLocationTypeFull]]) {
     final p = Packer();
 
     p.packInt(protocolMethodHashQuery);
     p.packBinary(hash.fullBytes);
+    p.pack(types);
     // TODO Maybe add int for hop count (or not because privacy concerns)
 
     final req = p.takeBytes();

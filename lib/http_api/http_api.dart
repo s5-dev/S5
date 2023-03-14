@@ -10,6 +10,7 @@ import 'package:base_codecs/base_codecs.dart';
 import 'package:http/http.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
+import 'package:lib5/util.dart';
 import 'package:messagepack/messagepack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
@@ -92,7 +93,7 @@ class HttpAPIServer {
               )
               .map((key, value) => MapEntry(int.parse(key), value))
               .cast<int, String>(),
-          dirname: queryParams['filename'],
+          dirname: queryParams['dirname'],
         );
 
         return {
@@ -210,7 +211,7 @@ class HttpAPIServer {
       );
     });
 
-    app.get(
+/*     app.get(
       '/s5/debug/nodes',
       (req, res) async {
         final auth = await node.checkAuth(req, 's5/debug/nodes');
@@ -228,7 +229,7 @@ class HttpAPIServer {
 
         return node.objectsBox.toMap().cast<String, dynamic>();
       },
-    );
+    ); */
 
     // TODO Persist upload sessions to cache (disk)
     final tusUploadSessions = <String, TusUploadSession>{};
@@ -329,6 +330,8 @@ class HttpAPIServer {
 
       if (await node.store!.contains(mhash)) {
         // TODO If accounts system is enabled, pin to account
+        res.statusCode = HttpStatus.conflict;
+
         throw 'Raw file with CID ${CID(cidTypeRaw, mhash, size: uploadLength)} has already been uploaded to this node';
       }
 
@@ -387,7 +390,11 @@ class HttpAPIServer {
         throw 'HTTP ${response.statusCode}';
       }
 
-      await cacheFile.openWrite().addStream(response.stream);
+      final sink = cacheFile.openWrite();
+
+      await sink.addStream(response.stream);
+
+      await sink.close();
 
       final cid = await node.uploadLocalFile(
         cacheFile,
@@ -437,6 +444,29 @@ class HttpAPIServer {
 
     // TODO Support HEAD requests
 
+    app.get('/s5/blob/:cid', (req, res) async {
+      final auth = await node.checkAuth(req, 's5/blob/redirect');
+      if (auth.denied) return res.unauthorized(auth);
+
+      final cidStr = req.params['cid'].split('.').first;
+
+      final cid = CID.decode(cidStr);
+
+      final dlUriProvider = StorageLocationProvider(node, cid.hash, [
+        storageLocationTypeFull,
+        storageLocationTypeFile,
+        storageLocationTypeBridge,
+      ]);
+
+      dlUriProvider.start();
+
+      await res.redirect(
+        Uri.parse((await dlUriProvider.next()).location.bytesUrl),
+        status: HttpStatus.temporaryRedirect,
+      );
+      return;
+    });
+
     app.get('/:cid', (req, res) async {
       final auth = await node.checkAuth(req, 's5/download');
       if (auth.denied) return res.unauthorized(auth);
@@ -480,6 +510,10 @@ class HttpAPIServer {
           ) ??
           'application/octet-stream';
 
+      if (filename.endsWith('mpd')) {
+        mediaType = 'application/dash+xml';
+      }
+
       if (mediaType == 'text/plain') {
         mediaType += '; charset=utf-8';
       }
@@ -513,7 +547,9 @@ class HttpAPIServer {
 
       // TODO date header
 
-      final dlUriProvider = DownloadUriProvider(node, cid.hash);
+      final dlUriProvider = StorageLocationProvider(node, cid.hash, [
+        storageLocationTypeFull,
+      ]);
 
       dlUriProvider.start();
 
@@ -544,7 +580,14 @@ class HttpAPIServer {
 
       final metadata = await node.getMetadataByCID(cid);
 
-      setUnlimitedCacheHeader(res);
+      if (cid.type != cidTypeBridge) {
+        setUnlimitedCacheHeader(res);
+      } else {
+        res.headers.set(
+          'Cache-Control',
+          'public, max-age=60',
+        );
+      }
 
       return metadata.toJson();
     });
@@ -582,24 +625,83 @@ class HttpAPIServer {
       res.close();
     });
 
-    app.get('/s5/debug/dl_uris/:cid', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/debug/dl_uris');
+    app.get('/s5/debug/storage_locations/:hash', (req, res) async {
+      final auth = await node.checkAuth(req, 's5/debug/storage_locations');
+      if (auth.denied) return res.unauthorized(auth);
+
+      final hash = Multihash.fromBase64Url(req.params['hash']);
+
+      final types = req.uri.queryParameters['types']
+              ?.split(',')
+              .map((e) => int.parse(e))
+              .toList() ??
+          [
+            storageLocationTypeBridge,
+            storageLocationTypeFull,
+            storageLocationTypeFile,
+            storageLocationTypeArchive,
+          ];
+
+      final dlUriProvider = StorageLocationProvider(
+        node,
+        hash,
+        types,
+      );
+
+      dlUriProvider.start();
+      await dlUriProvider.next();
+
+      final map = node.getCachedStorageLocations(hash, types);
+
+      final availableNodes = map.keys.toList();
+      node.p2p.sortNodesByScore(availableNodes);
+
+      final locations = [];
+
+      for (final nodeId in availableNodes) {
+        final entry = map[nodeId]!;
+        locations.add({
+          'type': entry.type,
+          'parts': entry.parts,
+          'expiry': entry.expiry,
+          'nodeId': nodeId.toBase58(),
+          'score': node.p2p.getNodeScore(nodeId),
+        });
+      }
+
+      return {
+        'locations': locations,
+      };
+    });
+    app.get('/s5/debug/download_urls/:cid', (req, res) async {
+      final auth = await node.checkAuth(req, 's5/debug/download_urls');
       if (auth.denied) return res.unauthorized(auth);
 
       final cid = CID.decode(req.params['cid']);
-      if (cid.type != cidTypeRaw) {
-        throw 'This is not a raw CID';
-      }
+      final hash = cid.hash;
 
-      final dlUriProvider = DownloadUriProvider(node, cid.hash);
-
+      final dlUriProvider = StorageLocationProvider(node, hash, [
+        storageLocationTypeFull,
+        storageLocationTypeFile,
+        storageLocationTypeBridge,
+      ]);
       dlUriProvider.start();
+      await dlUriProvider.next();
 
-      final first = await dlUriProvider.next();
+      final map = node.getCachedStorageLocations(hash, [
+        storageLocationTypeFull,
+      ]);
 
-      return {
-        'uri': first.uri.toString(),
-      };
+      final availableNodes = map.keys.toList();
+      node.p2p.sortNodesByScore(availableNodes);
+
+      final lines = <String>[];
+
+      for (final nodeId in availableNodes) {
+        lines.add(map[nodeId]!.bytesUrl);
+      }
+      res.add(utf8.encode(lines.join('\n')));
+      res.close();
     });
 
     app.get(
@@ -623,7 +725,7 @@ class HttpAPIServer {
 
       final queryParams = req.uri.queryParameters;
 
-      final pk = base64Url.decode(queryParams['pk']!);
+      final pk = base64UrlNoPaddingDecode(queryParams['pk']!);
 
       final entry = await node.registry.get(pk);
       if (entry == null) {
@@ -631,10 +733,10 @@ class HttpAPIServer {
         return '';
       }
       final response = <String, dynamic>{
-        'pk': base64Url.encode(entry.pk),
+        'pk': base64UrlNoPaddingEncode(entry.pk),
         'revision': entry.revision,
-        'data': base64Url.encode(entry.data),
-        'signature': base64Url.encode(entry.signature),
+        'data': base64UrlNoPaddingEncode(entry.data),
+        'signature': base64UrlNoPaddingEncode(entry.signature),
       };
 
       return response;
@@ -648,11 +750,11 @@ class HttpAPIServer {
 
       final map = await req.bodyAsJsonMap;
 
-      final pk = base64Url.decode(map['pk']!);
+      final pk = base64UrlNoPaddingDecode(map['pk']!);
 
       final int revision = map['revision']!;
-      final bytes = base64Url.decode(map['data']!);
-      final signature = base64Url.decode(map['signature']!);
+      final bytes = base64UrlNoPaddingDecode(map['data']!);
+      final signature = base64UrlNoPaddingDecode(map['signature']!);
 
       await node.registry.set(
         SignedRegistryEntry(
@@ -680,7 +782,7 @@ class HttpAPIServer {
             );
 
             stream.map((sre) {
-              return node.registry.prepareMessage(sre);
+              return node.registry.serializeRegistryEntry(sre);
             }).listen((event) {
               webSocket.add(event);
             });
@@ -778,13 +880,18 @@ class HttpAPIServer {
           }
         }
 
-        /*   if (parts.length > 1 && parts[1] == 'hns') {
-          final hnsName = parts[0];
+        final String? domain = node.config['http']?['api']?['domain'];
 
-          final cidStr = await node.resolveName(hnsName);
-
-          cid = CID.decode(cidStr);
-        } */
+        if (domain != null) {
+          if (uri.host == 'docs.$domain') {
+            cid = CID.decode('zrjD7xwmgP8U6hquPUtSRcZP1J1LvksSwTq4CPZ2ck96FHu');
+          } else if (!('.${uri.host}').endsWith('.$domain')) {
+            final cidStr = await node.resolveName(uri.host);
+            cid = CID.decode(cidStr);
+          } else {
+            // TODO Check .ns.
+          }
+        }
 
         if (cid == null) {
           try {
@@ -876,10 +983,10 @@ class HttpAPIServer {
               res.add(await node.downloadBytesByHash(servedFile.cid.hash));
               res.close();
             } else {
-              final dlUriProvider = DownloadUriProvider(
-                node,
-                servedFile.cid.hash,
-              );
+              final dlUriProvider =
+                  StorageLocationProvider(node, servedFile.cid.hash, [
+                storageLocationTypeFull,
+              ]);
               dlUriProvider.start();
 
               await handleChunkedFile(

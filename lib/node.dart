@@ -15,12 +15,15 @@ import 'package:mime/mime.dart';
 import 'package:minio/minio.dart';
 import 'package:path/path.dart';
 import 'package:pool/pool.dart';
+import 'package:s5_server/db/hive_key_value_db.dart';
+import 'package:s5_server/http_api/serve_chunked_file.dart';
+import 'package:s5_server/store/merge.dart';
+import 'package:s5_server/store/sia.dart';
 import 'package:tint/tint.dart';
 
 import 'package:s5_server/download/uri_provider.dart';
 import 'package:s5_server/http_api/http_api.dart';
 import 'package:s5_server/logger/base.dart';
-import 'package:s5_server/model/node_id.dart';
 import 'package:s5_server/rust/bridge_definitions.dart';
 import 'package:s5_server/service/accounts.dart';
 import 'package:s5_server/service/cache_cleaner.dart';
@@ -52,7 +55,7 @@ class S5Node {
 
   final client = Client();
 
-  late final Box<Map> objectsBox;
+  late final KeyValueDB objectsBox;
 
   final rawFileUploadPool = Pool(16);
 
@@ -71,12 +74,14 @@ class S5Node {
       Hive.init(config['database']['path']);
     }
 
-    objectsBox = await Hive.openBox('s5-objects');
+    objectsBox = HiveKeyValueDB(await Hive.openBox('s5-object-cache'));
 
     p2p = P2PService(this);
 
     p2p.nodeKeyPair = await crypto.newKeyPairEd25519(
-      seed: base64Url.decode(config['keypair']['seed']),
+      seed: base64UrlNoPaddingDecode(
+        (config['keypair']['seed'] as String).replaceAll('=', ''),
+      ),
     );
 
     await p2p.init();
@@ -84,8 +89,6 @@ class S5Node {
     logger.info('${'NODE ID'.bold()}: ${p2p.localNodeId.toString().green()}');
 
     logger.info('');
-
-    runObjectGarbageCollector();
 
     registry = RegistryService(this);
     await registry.init();
@@ -104,15 +107,10 @@ class S5Node {
     final arweaveConfig = config['store']?['arweave'];
     final estuaryConfig = config['store']?['estuary'];
 
-    if (s3Config != null &&
-        localConfig != null &&
-        arweaveConfig != null &&
-        siaConfig != null) {
-      throw 'Only one store can be active at the same time';
-    }
+    final stores = <String, ObjectStore>{};
 
     if (s3Config != null) {
-      store = S3ObjectStore(
+      stores['s3'] = S3ObjectStore(
         Minio(
           endPoint: s3Config['endpoint'],
           accessKey: s3Config['accessKey'],
@@ -143,11 +141,17 @@ class S5Node {
     } */
 
     if (localConfig != null) {
-      store = LocalObjectStore(
+      stores['local'] = LocalObjectStore(
         Directory(localConfig['path']!),
         localConfig['http'],
       );
     }
+
+    /* if (metadataBridgeConfig != null) {
+      stores['bridge'] = MetadataBridgeObjectStore(
+          crypto: crypto,
+      );
+    } */
 
     /* if (estuaryConfig != null) {
       store = EstuaryObjectStore(
@@ -157,17 +161,37 @@ class S5Node {
       );
     } */
 
-    /* if (siaConfig != null) {
-      store = SiaObjectStore(
-        siaConfig['renterd_api_addr']!,
-        siaConfig['renterd_api_password']!,
-        siaConfig['http'],
-        crypto: crypto,
+    if (siaConfig != null) {
+      stores['sia'] = SiaObjectStore(
+        workerApiUrl: siaConfig['workerApiUrl']!,
+        apiPassword: siaConfig['apiPassword']!,
+        downloadUrls: [siaConfig['downloadUrl']!],
+        httpClient: httpClient,
       );
-    } */
+    }
 
-    if (store == null) {
+    if (stores.isEmpty) {
       exposeStore = false;
+    } else {
+      if (stores.length > 1) {
+        final Map storeConfig = config['store'];
+        if (storeConfig['merge'] == true) {
+          store = MergedObjectStore(
+            stores,
+            allowedUploadSizes: storeConfig['allowedUploadSizes'],
+          );
+          logger.info('[${store.runtimeType}] init...');
+          await store!.init();
+          logger.info('[${store.runtimeType}] ready.');
+        } else {
+          throw 'More than one store configured (${stores.keys.toList().join(', ')}), enable the merge store if you actually want to use multiple at once';
+        }
+      } else {
+        store = stores.values.first;
+        logger.info('[${store.runtimeType}] init...');
+        await store!.init();
+        logger.info('[${store.runtimeType}] ready.');
+      }
     }
 
     await p2p.start();
@@ -232,26 +256,36 @@ class S5Node {
       return hashFile.readAsBytes();
     }
 
-    final dlUriProvider = DownloadUriProvider(this, hash);
+    final dlUriProvider = StorageLocationProvider(this, hash, [
+      storageLocationTypeFull,
+      storageLocationTypeFile,
+    ]);
 
     dlUriProvider.start();
 
     while (true) {
       final dlUri = await dlUriProvider.next();
 
-      logger.verbose('[try] ${dlUri.uri}');
+      logger.verbose('[try] ${dlUri.location.bytesUrl}');
 
       try {
         final res = await client
-            .get(dlUri.uri)
+            .get(Uri.parse(dlUri.location.bytesUrl))
             .timeout(Duration(seconds: 30)); // TODO Adjust timeout
 
-        final resHash = await rust.hashBlake3(input: res.bodyBytes);
+        if (hash.functionType == cidTypeBridge) {
+          if (res.statusCode != 200) {
+            throw 'HTTP ${res.statusCode}: ${res.body} for ${dlUri.location.bytesUrl}';
+          }
+          // TODO Have list of trusted Node IDs here, already filter them BEFORE EVEN DOWNLOADING
+        } else {
+          final resHash = await rust.hashBlake3(input: res.bodyBytes);
 
-        if (!areBytesEqual(hash.hashBytes, resHash)) {
-          throw 'Integrity verification failed';
+          if (!areBytesEqual(hash.hashBytes, resHash)) {
+            throw 'Integrity verification failed';
+          }
+          dlUriProvider.upvote(dlUri);
         }
-        dlUriProvider.upvote(dlUri);
 
         await hashFile.parent.create(recursive: true);
         await hashFile.writeAsBytes(res.bodyBytes);
@@ -267,7 +301,7 @@ class S5Node {
 
   final _dnslinkCache = <String, String>{};
 
-  void runObjectGarbageCollector() {
+/*   void runObjectGarbageCollector() {
     // TODO Maybe keep peer_ids to know where to ask
     final ts = DateTime.now().millisecondsSinceEpoch;
     int count = 0;
@@ -289,9 +323,11 @@ class S5Node {
       }
     }
     logger.verbose('[objects] cleaned $count outdated uris');
-  }
+  } */
 
   Future<String> resolveName(String name) async {
+    logger.verbose('[dns] resolveName $name');
+
     if (_dnslinkCache.containsKey(name)) {
       return _dnslinkCache[name]!;
     }
@@ -335,23 +371,49 @@ class S5Node {
         .toList();
   }
 
-  void addDownloadUri(
+  Map<int, Map<NodeID, Map<int, dynamic>>> readStorageLocationsFromDB(
+    Multihash hash,
+  ) {
+    final Map<int, Map<NodeID, Map<int, dynamic>>> map = {};
+    final bytes = objectsBox.get(hash.fullBytes);
+    if (bytes == null) {
+      return map;
+    }
+    final unpacker = Unpacker(bytes);
+    final mapLength = unpacker.unpackMapLength();
+    for (int i = 0; i < mapLength; i++) {
+      final type = unpacker.unpackInt();
+      map[type!] = {};
+      final mapLength = unpacker.unpackMapLength();
+      for (int j = 0; j < mapLength; j++) {
+        final nodeId = unpacker.unpackBinary();
+        map[type]![NodeID(nodeId)] = unpacker.unpackMap().cast<int, dynamic>();
+      }
+    }
+    return map;
+  }
+
+  void addStorageLocation(
     Multihash hash,
     NodeID nodeId,
-    String url,
-    int ttl, {
+    StorageLocation location, {
     Uint8List? message,
-  }) {
-    final val = objectsBox.get(hash.toBase64Url()) ?? {};
-    final map = {
-      'uri': url,
-      'ttl': ttl,
+  }) async {
+    final map = readStorageLocationsFromDB(hash);
+
+    map[location.type] ??= {};
+
+    map[location.type]![nodeId] = {
+      1: location.parts,
+      // 2: location.binaryParts,
+      3: location.expiry,
+      4: message,
     };
-    if (message != null) {
-      map['msg'] = base64UrlNoPaddingEncode(message);
-    }
-    val[nodeId.toBase58()] = map;
-    objectsBox.put(hash.toBase64Url(), val);
+
+    objectsBox.set(
+      hash.fullBytes,
+      (Packer()..pack(map)).takeBytes(),
+    );
   }
 
   Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
@@ -362,33 +424,45 @@ class S5Node {
     return accounts!.checkAuth(req, scope);
   }
 
-  Map<NodeID, Uri> getDownloadUrisFromDB(Multihash hash) {
-    final uris = <NodeID, Uri>{};
-    final val = objectsBox.get(hash.toBase64Url()) ?? {};
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    for (final e in val.entries) {
-      if (e.value['ttl'] < ts) {
-      } else {
-        uris[NodeID.decode(e.key)] = Uri.parse(
-          e.value['uri'],
-        );
-      }
+  Map<NodeID, StorageLocation> getCachedStorageLocations(
+    Multihash hash,
+    List<int> types,
+  ) {
+    final locations = <NodeID, StorageLocation>{};
+
+    final map = readStorageLocationsFromDB(hash);
+    if (map.isEmpty) {
+      return {};
     }
 
-    return uris;
+    final ts = (DateTime.now().millisecondsSinceEpoch / 1000).round();
+
+    for (final type in types) {
+      if (!map.containsKey(type)) continue;
+      for (final e in map[type]!.entries) {
+        if (e.value[3] < ts) {
+        } else {
+          locations[e.key] = StorageLocation(
+            type,
+            e.value[1].cast<String>(),
+            e.value[3],
+          )..providerMessage = e.value[4];
+        }
+      }
+    }
+    return locations;
   }
 
-  Future<void> fetchHashLocally(Multihash hash) async {
+  Future<void> fetchHashLocally(Multihash hash, List<int> types) async {
     if (store != null) {
-      if (await store!.contains(hash)) {
-        final url = await store!.provide(hash);
+      if (await store!.canProvide(hash, types)) {
+        final location = await store!.provide(hash, types);
 
-        addDownloadUri(
+        addStorageLocation(
           hash,
           p2p.localNodeId,
-          url,
-          DateTime.now().add(Duration(hours: 1)).millisecondsSinceEpoch,
-          message: await p2p.prepareProvideMessage(hash, url),
+          location,
+          message: await p2p.prepareProvideMessage(hash, location),
         );
       }
     }
@@ -405,6 +479,8 @@ class S5Node {
     p.packInt(metadataMagicByte);
     p.packInt(metadataTypeWebApp);
 
+    p.packListLength(5);
+
     p.packString(dirname);
 
     p.packListLength(tryFiles?.length ?? 0);
@@ -420,7 +496,7 @@ class S5Node {
       p.packString(e.value);
     }
 
-    p.packInt(paths.length);
+    p.packListLength(paths.length);
 
     final cids = <String, CID>{};
     final futures = <Future>[];
@@ -440,6 +516,7 @@ class S5Node {
 
     for (final path in paths.keys) {
       final bytes = paths[path]!;
+      p.packListLength(3);
       p.packString(path);
       p.packBinary(cids[path]!.toBytes());
       p.packString(
@@ -466,7 +543,7 @@ class S5Node {
   }
 
   Future<void> deleteHash(Multihash hash) async {
-    objectsBox.delete(hash.toBase64Url());
+    objectsBox.delete(hash.fullBytes);
     await store?.delete(hash);
   }
 
@@ -498,7 +575,9 @@ class S5Node {
       size: cid.size,
     );
 
-    final newCID = await uploadLocalFile(cacheFile);
+    final newCID = await uploadLocalFile(
+      cacheFile,
+    );
 
     if (cid.hash != newCID.hash) {
       throw 'Hash mismatch (${cid.hash} != ${newCID.hash})';
@@ -523,10 +602,10 @@ class S5Node {
   }) async {
     final sink = outputFile.openWrite();
 
-    final dlUriProvider = DownloadUriProvider(
-      this,
-      hash,
-    );
+    final dlUriProvider = StorageLocationProvider(this, hash, [
+      storageLocationTypeFull,
+      storageLocationTypeFile,
+    ]);
 
     dlUriProvider.start();
 
@@ -535,15 +614,11 @@ class S5Node {
     try {
       final dlUri = await dlUriProvider.next();
 
-      final request = Request('GET', dlUri.uri);
-
-      if (size != null) {
-        request.headers['range'] = 'bytes=$progress-${size - 1}';
-      }
+      final request = Request('GET', Uri.parse(dlUri.location.bytesUrl));
 
       final response = await client.send(request);
 
-      if (response.statusCode != 206) {
+      if (response.statusCode != 200) {
         throw 'HTTP ${response.statusCode}';
       }
 
@@ -574,6 +649,8 @@ class S5Node {
       }
 
       await completer.future;
+
+      await sink.close();
 
       final b3hash = await rust.hashBlake3File(path: outputFile.path);
       final localFileHash =
@@ -608,6 +685,8 @@ class S5Node {
         metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
       } else if (cid.type == cidTypeMetadataWebApp) {
         metadata = deserializeWebAppMetadata(bytes);
+      } else if (cid.type == cidTypeBridge) {
+        metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
       } else {
         throw 'Unsupported metadata format';
       }
@@ -631,17 +710,11 @@ class S5Node {
       ),
     );
 
-    await store!.put(
-      hash,
-      _uploadRawStream(
-        Stream.value(data),
-        baoResult,
-        data.length,
-      ),
-      data.length <= defaultChunkSize
-          ? data.length
-          : data.length + baoResult.outboard.length + 16,
-    );
+    await store!.put(hash, Stream.value(data), data.length);
+
+    if (data.length > defaultChunkSize) {
+      await store!.putBaoOutboardBytes(hash, baoResult.outboard);
+    }
 
     return CID(
       cidTypeRaw,
@@ -650,7 +723,7 @@ class S5Node {
     );
   }
 
-  Future<CID> uploadLocalFile(File file) async {
+  Future<CID> uploadLocalFile(File file, {bool withOutboard = true}) async {
 /*     if (store!.canPutAsync) {
       logger.verbose('using async upload strategy');
 
@@ -702,51 +775,18 @@ class S5Node {
 
     await store!.put(
       hash,
-      _uploadRawFile(file, baoResult, size),
-      size <= defaultChunkSize ? size : size + baoResult.outboard.length + 16,
+      file.openRead().map((event) => Uint8List.fromList(event)),
+      size,
     );
+    if (size > defaultChunkSize && withOutboard) {
+      await store!.putBaoOutboardBytes(hash, baoResult.outboard);
+    }
 
     return CID(
       cidTypeRaw,
       hash,
       size: size,
     );
-  }
-
-  Stream<Uint8List> _uploadRawFile(
-    File file,
-    BaoResult baoResult,
-    int size,
-  ) {
-    return _uploadRawStream(
-      file.openRead().map((event) => Uint8List.fromList(event)),
-      baoResult,
-      size,
-    );
-  }
-
-  Stream<Uint8List> _uploadRawStream(
-    Stream<Uint8List> stream,
-    BaoResult baoResult,
-    int size,
-  ) async* {
-    yield* stream;
-
-    if (size <= defaultChunkSize) {
-      return;
-    }
-
-    final meta = Uint8List(16);
-    meta[15] = 0x8d;
-    meta[14] = 0x1c;
-    meta[13] = 0x4b;
-    meta[12] = 0x7a;
-    meta[11] = 3; // type (bao)
-    meta[10] = 8; // bao depth
-
-    _copyTo(meta, 0, encodeEndian(baoResult.outboard.length, 8));
-
-    yield Uint8List.fromList(baoResult.outboard + meta);
   }
 
   void _copyTo(Uint8List list, int offset, Uint8List input) {

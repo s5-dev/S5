@@ -36,13 +36,16 @@ class AccountsService {
 
   late final Alfred app;
 
-  final alwaysAllowedScopes = [
+  late final List<String> alwaysAllowedScopes;
+  final defaultAlwaysAllowedScopes = [
     'account/login',
-    'account/register',
+    // 'account/register',
     's5/registry/read',
-    's5/subdomain/load',
+    // 's5/subdomain/load',
     's5/metadata',
-    's5/debug/dl_uris',
+    's5/debug/storage_locations',
+    's5/debug/download_urls',
+    's5/blob/redirect',
   ];
 
   Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
@@ -103,6 +106,8 @@ class AccountsService {
   }
 
   Future<void> init() async {
+    alwaysAllowedScopes =
+        config['alwaysAllowedScopes'] ?? defaultAlwaysAllowedScopes;
     sql = SQLService(config, logger);
 
     await sql.init();

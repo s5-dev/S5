@@ -20,7 +20,7 @@ Future handleChunkedFile(
   HttpResponse res,
   Multihash hash,
   int totalSize,
-  DownloadUriProvider dlUriProvider, {
+  StorageLocationProvider dlUriProvider, {
   required String cachePath,
   required Logger logger,
   required S5Node node,
@@ -168,7 +168,7 @@ class TreeMetadata {
 Map<String, Completer> downloadingChunkLock = {};
 
 Stream<List<int>> openRead(
-  DownloadUriProvider dlUriProvider, {
+  StorageLocationProvider dlUriProvider, {
   required Multihash hash,
   required int start,
   required int totalSize,
@@ -183,30 +183,23 @@ Stream<List<int>> openRead(
 
   int offset = start % chunkSize;
 
-  DownloadURI downloadUri = await dlUriProvider.next();
+  var storageLocation = await dlUriProvider.next();
 
-  if (!merkleTreeCache.containsKey(downloadUri.uri.toString())) {
-    final res = await httpClient.get(downloadUri.uri, headers: {
-      'range': 'bytes=$totalSize-',
-    });
-    final meta = res.bodyBytes.sublist(res.bodyBytes.length - 16);
-
-    final baoLength = decodeEndian(meta.sublist(0, 8));
-
-    if ((res.bodyBytes.length - 16) != baoLength) {
-      throw 'Invalid length';
-    }
-
-    final baoBytes = res.bodyBytes.sublist(
-      0,
-      baoLength,
+  if (!merkleTreeCache
+      .containsKey(storageLocation.location.outboardBytesUrl.toString())) {
+    final res = await httpClient.get(
+      Uri.parse(
+        storageLocation.location.outboardBytesUrl,
+      ),
     );
 
     // TODO Verify bao bytes early
-    merkleTreeCache[downloadUri.uri.toString()] = TreeMetadata(baoBytes);
+    merkleTreeCache[storageLocation.location.outboardBytesUrl.toString()] =
+        TreeMetadata(res.bodyBytes);
   }
 
-  final mtree = merkleTreeCache[downloadUri.uri.toString()]!;
+  final mtree =
+      merkleTreeCache[storageLocation.location.outboardBytesUrl.toString()]!;
 
   StreamSubscription? sub;
 
@@ -252,9 +245,12 @@ Stream<List<int>> openRead(
 
             if (downloadedEncData.isEmpty) {
               logger.verbose('[chunk] send http range request');
-              final request = Request('GET', downloadUri.uri);
+              final request =
+                  Request('GET', Uri.parse(storageLocation.location.bytesUrl));
 
-              request.headers['range'] = 'bytes=$encStartByte-$totalSize';
+              final range = 'bytes=$encStartByte-$totalSize';
+
+              request.headers['range'] = range;
 
               final response = await httpClient.send(request);
 
@@ -319,15 +315,18 @@ Stream<List<int>> openRead(
               throw 'Invalid bytes';
             }
 
-            dlUriProvider.upvote(downloadUri);
+            dlUriProvider.upvote(storageLocation);
             await chunkCacheFile.writeAsBytes(bytes);
 
             completer.complete();
             break;
           } catch (e, st) {
-            dlUriProvider.downvote(downloadUri);
+            dlUriProvider.downvote(storageLocation);
             try {
-              downloadUri = await dlUriProvider.next();
+              if (retryCount > 10) {
+                rethrow;
+              }
+              storageLocation = await dlUriProvider.next();
             } catch (e, st) {
               completer.complete();
               downloadingChunkLock.remove(chunkLockKey);
@@ -339,8 +338,11 @@ Stream<List<int>> openRead(
             } catch (_) {}
             downloadedEncData.clear();
 
+            retryCount++;
+
             logger.warn('[chunk] download error (try #$retryCount): $e $st');
-            await Future.delayed(Duration(milliseconds: 10));
+            await Future.delayed(
+                Duration(milliseconds: pow(2, retryCount + 5) as int));
           }
         }
       }

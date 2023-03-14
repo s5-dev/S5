@@ -33,7 +33,6 @@ class RustPlatform extends FlutterRustBridgeBase<RustWire> with FlutterRustBridg
     return raw;
   }
 // Section: finalizer
-
 }
 
 // Section: WASM wire module

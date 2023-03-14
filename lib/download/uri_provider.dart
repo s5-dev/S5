@@ -1,32 +1,36 @@
 import 'package:lib5/lib5.dart';
 import 'package:lib5/constants.dart';
 
-import 'package:s5_server/model/node_id.dart';
 import 'package:s5_server/node.dart';
 
-class DownloadUriProvider {
+class StorageLocationProvider {
   final S5Node node;
   final Multihash hash;
+  final List<int> types;
 
-  DownloadUriProvider(this.node, this.hash);
+  StorageLocationProvider(
+    this.node,
+    this.hash, [
+    this.types = const [storageLocationTypeFull],
+  ]);
 
   final timeoutDuration = Duration(seconds: 60);
 
   List<NodeID> availableNodes = [];
-  late final Map<NodeID, Uri> uris;
+  late final Map<NodeID, StorageLocation> uris;
 
   late DateTime timeout;
 
   bool isTimedOut = false;
 
   void start() async {
-    uris = node.getDownloadUrisFromDB(hash);
+    uris = node.getCachedStorageLocations(hash, types);
 
     availableNodes = uris.keys.toList();
     node.p2p.sortNodesByScore(availableNodes);
 
     if (uris.isEmpty) {
-      await node.fetchHashLocally(hash);
+      await node.fetchHashLocally(hash, types);
     }
 
     timeout = DateTime.now().add(timeoutDuration);
@@ -34,10 +38,10 @@ class DownloadUriProvider {
     bool requestSent = false;
 
     while (true) {
-      final newUris = node.getDownloadUrisFromDB(hash);
+      final newUris = node.getCachedStorageLocations(hash, types);
 
       if (availableNodes.isEmpty && newUris.isEmpty && !requestSent) {
-        node.p2p.sendHashRequest(hash);
+        node.p2p.sendHashRequest(hash, types);
         requestSent = true;
       }
       bool hasNewNode = false;
@@ -77,39 +81,40 @@ class DownloadUriProvider {
 
   bool isWaitingForUri = false;
 
-  Future<DownloadURI> next() async {
+  Future<SignedStorageLocation> next() async {
     timeout = DateTime.now().add(timeoutDuration);
     while (true) {
       if (availableNodes.isNotEmpty) {
         isWaitingForUri = false;
         final nodeId = availableNodes.removeAt(0);
 
-        return DownloadURI(nodeId, uris[nodeId]!);
+        return SignedStorageLocation(nodeId, uris[nodeId]!);
       }
       isWaitingForUri = true;
       if (isTimedOut) {
-        throw 'Could not download raw file: Timed out after $timeoutDuration ${hash.toBase64Url()}';
+        throw 'Could not download raw file: Timed out after $timeoutDuration $hash';
       }
       await Future.delayed(Duration(milliseconds: 10));
     }
   }
 
-  void upvote(DownloadURI uri) {
-    node.p2p.incrementScoreCounter(uri.nodeId, '+');
+  void upvote(SignedStorageLocation uri) {
+    node.p2p.upvote(uri.nodeId);
   }
 
-  void downvote(DownloadURI uri) {
-    node.p2p.incrementScoreCounter(uri.nodeId, '-');
+  void downvote(SignedStorageLocation uri) {
+    node.p2p.downvote(uri.nodeId);
   }
 }
 
-class DownloadURI {
+class SignedStorageLocation {
   final NodeID nodeId;
-  final Uri uri;
+  final StorageLocation location;
+
   // TODO Support custom headers
 
-  DownloadURI(this.nodeId, this.uri);
+  SignedStorageLocation(this.nodeId, this.location);
 
   @override
-  toString() => 'DownloadURI($uri, $nodeId)';
+  toString() => 'SignedStorageLocation($location, $nodeId)';
 }

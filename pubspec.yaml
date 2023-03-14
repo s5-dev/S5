@@ -1,7 +1,7 @@
 name: s5_server
-description: proof of concept implementation of a new storage network
+description: Decentralized content-addressed storage network
 publish_to: none
-version: 0.8.0
+version: 0.9.2
 
 environment:
   sdk: ">=2.18.2 <3.0.0"
@@ -16,8 +16,7 @@ dependencies:
   convert: ^3.0.2
   http: ^0.13.5
   minio:
-    git:
-      url: https://github.com/redsolver/minio-dart.git
+    git: https://github.com/redsolver/minio-dart.git
   path: ^1.8.2
   hive: ^2.2.3
   toml: ^0.13.1

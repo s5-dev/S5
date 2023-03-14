@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:minio/minio.dart';
 
@@ -12,8 +13,28 @@ class S3ObjectStore extends ObjectStore {
 
   final List<String> cdnUrls;
 
+  final availableHashes = <Multihash>{};
+  final availableBaoOutboardHashes = <Multihash>{};
+
   @override
-  final canPutAsync = false;
+  Future<void> init() async {
+    await for (final page in minio.listObjects(bucket, prefix: '1/')) {
+      for (final object in page.objects) {
+        if (object.key!.endsWith('.obao')) {
+          availableBaoOutboardHashes.add(
+            Multihash.fromBase64Url(object.key!.substring(2).split('.')[0]),
+          );
+        } else {
+          availableHashes.add(
+            Multihash.fromBase64Url(object.key!.substring(2)),
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  final uploadsSupported = true;
 
   S3ObjectStore(
     this.minio,
@@ -35,17 +56,100 @@ class S3ObjectStore extends ObjectStore {
     );
   }
 
-  String getObjectKeyForHash(Multihash hash) {
-    return '0/${hash.toBase64Url()}';
+  String getObjectKeyForHash(Multihash hash, [String? ext]) {
+    if (ext != null) {
+      return '1/${hash.toBase64Url()}.$ext';
+    }
+    return '1/${hash.toBase64Url()}';
+  }
+
+  final _random = Random();
+
+  @override
+  Future<bool> canProvide(Multihash hash, List<int> types) async {
+    for (final type in types) {
+      if (type == storageLocationTypeArchive) {
+        if (availableHashes.contains(hash)) {
+          return true;
+        }
+      } else if (type == storageLocationTypeFile) {
+        if (availableHashes.contains(hash)) {
+          return true;
+        }
+      } else if (type == storageLocationTypeFull) {
+        if (availableHashes.contains(hash) &&
+            availableBaoOutboardHashes.contains(hash)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   @override
+  Future<StorageLocation> provide(Multihash hash, List<int> types) async {
+    for (final type in types) {
+      if (!(await canProvide(hash, [type]))) continue;
+      if (type == storageLocationTypeArchive) {
+        return StorageLocation(
+          storageLocationTypeArchive,
+          [],
+          calculateExpiry(Duration(days: 1)),
+        );
+      } else if (type == storageLocationTypeFile ||
+          type == storageLocationTypeFull) {
+        if (cdnUrls.isNotEmpty) {
+          final String cdnUrl;
+          if (cdnUrls.length == 1) {
+            cdnUrl = cdnUrls.first;
+          } else {
+            cdnUrl = cdnUrls[_random.nextInt(cdnUrls.length)];
+          }
+
+          return StorageLocation(
+            type,
+            ['$cdnUrl${getObjectKeyForHash(hash)}'],
+            calculateExpiry(Duration(hours: 1)),
+          );
+        } else {
+          final fileUrl = await minio.presignedGetObject(
+            bucket,
+            getObjectKeyForHash(hash),
+            expires: 86400, // TODO Configurable
+          );
+          if (type == storageLocationTypeFile) {
+            return StorageLocation(
+              storageLocationTypeFile,
+              [fileUrl],
+              calculateExpiry(Duration(hours: 1)),
+            );
+          }
+
+          final outboardUrl = await minio.presignedGetObject(
+            bucket,
+            getObjectKeyForHash(hash, 'obao'),
+            expires: 86400, // TODO Configurable
+          );
+          return StorageLocation(
+            storageLocationTypeFull,
+            [
+              fileUrl,
+              outboardUrl,
+            ],
+            calculateExpiry(Duration(hours: 1)),
+          );
+        }
+      }
+    }
+    throw 'Could not provide hash $hash for types $types';
+  }
+
+  // ! writes
+
+  @override
   Future<bool> contains(Multihash hash) async {
-    final res = await minio.objectExists(
-      bucket,
-      getObjectKeyForHash(hash),
-    );
-    return res;
+    return availableHashes.contains(hash);
   }
 
   @override
@@ -68,6 +172,30 @@ class S3ObjectStore extends ObjectStore {
     if (res.isEmpty) {
       throw 'Upload failed';
     }
+    availableHashes.add(hash);
+  }
+
+  @override
+  Future<void> delete(Multihash hash) async {
+    if (availableBaoOutboardHashes.contains(hash)) {
+      await minio.removeObject(bucket, getObjectKeyForHash(hash, 'obao'));
+      availableBaoOutboardHashes.remove(hash);
+    }
+    await minio.removeObject(bucket, getObjectKeyForHash(hash));
+    availableHashes.remove(hash);
+  }
+
+  @override
+  Future<void> putBaoOutboardBytes(Multihash hash, Uint8List outboard) async {
+    final res = await minio.putObject(
+      bucket,
+      getObjectKeyForHash(hash, 'obao'),
+      Stream.value(outboard),
+    );
+    if (res.isEmpty) {
+      throw 'Upload failed';
+    }
+    availableBaoOutboardHashes.add(hash);
   }
 
 /*   @override
@@ -90,32 +218,4 @@ class S3ObjectStore extends ObjectStore {
     await minio.copyObject(bucket, getObjectKeyForHash(hash), key);
     await minio.removeObject(bucket, key);
   } */
-
-  final _random = Random();
-
-  @override
-  Future<String> provide(Multihash hash) {
-    if (cdnUrls.isNotEmpty) {
-      final String cdnUrl;
-      if (cdnUrls.length == 1) {
-        cdnUrl = cdnUrls.first;
-      } else {
-        cdnUrl = cdnUrls[_random.nextInt(cdnUrls.length)];
-      }
-      return Future.value(
-        '$cdnUrl${getObjectKeyForHash(hash)}',
-      );
-    }
-
-    return minio.presignedGetObject(
-      bucket,
-      getObjectKeyForHash(hash),
-      expires: 86400, // TODO Configurable
-    );
-  }
-
-  @override
-  Future<void> delete(Multihash hash) {
-    return minio.removeObject(bucket, getObjectKeyForHash(hash));
-  }
 }

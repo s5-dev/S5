@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
+import 'package:lib5/util.dart';
 import 'package:s5_server/crypto/implementation.dart';
 import 'package:tint/tint.dart';
 import 'package:toml/toml.dart';
@@ -40,7 +40,7 @@ void main(List<String> arguments) async {
     file.writeAsStringSync(
       (isDocker ? defaultConfigDocker : defaultConfig).replaceFirst(
         '"AUTOMATICALLY_GENERATED_ON_FIRST_START"',
-        '"${base64Url.encode(seed)}"',
+        '"${base64UrlNoPaddingEncode(seed)}"',
       ),
     );
   }

@@ -9,7 +9,7 @@ class CacheCleaner {
 
   CacheCleaner(this.cacheDirectory, this.logger);
 
-  final maxCacheSizeInGB = 1;
+  final maxCacheSizeInGB = 4;
 
   void start() {
     run();

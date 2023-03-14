@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:s5_server/model/node_id.dart';
+import 'package:lib5/lib5.dart';
 
 class SignedMessage {
   final NodeID nodeId;

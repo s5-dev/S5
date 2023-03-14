@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:alfred/alfred.dart';
 import 'package:base_codecs/base_codecs.dart';
+import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:path/path.dart';
 
@@ -14,15 +15,25 @@ class LocalObjectStore extends ObjectStore {
   final Map httpServerConfig;
 
   @override
-  final canPutAsync = false;
+  Future<void> init() async {}
+
+  @override
+  final uploadsSupported = true;
 
   LocalObjectStore(this.rootDir, this.httpServerConfig) {
     final app = Alfred();
     final re = RegExp(r'^[a-z0-9A-Z]+$');
+
+    app.all('*', cors());
+
     app.get('/*', (req, res) {
       for (final s in req.uri.pathSegments) {
         if (!re.hasMatch(s)) {
-          throw 'Invalid path';
+          if (re.hasMatch(s.substring(0, s.length - 4)) &&
+              s.endsWith('.obao')) {
+          } else {
+            throw 'Invalid path';
+          }
         }
       }
       return File(joinAll([rootDir.path] + req.uri.pathSegments));
@@ -33,7 +44,7 @@ class LocalObjectStore extends ObjectStore {
     );
   }
 
-  String getPathForHash(Multihash hash) {
+  String getPathForHash(Multihash hash, [String? ext]) {
     final b =
         base32Rfc.encode(hash.fullBytes).toLowerCase().replaceAll('=', '');
     var path = '';
@@ -41,17 +52,66 @@ class LocalObjectStore extends ObjectStore {
     for (int i = 0; i < 8; i += 2) {
       path += '${b.substring(i, i + 2)}/';
     }
+    if (ext != null) {
+      return '1/$path${b.substring(8)}.$ext';
+    }
 
-    return '0/$path${b.substring(8)}';
+    return '1/$path${b.substring(8)}';
   }
 
-  File getFileForHash(Multihash hash) {
-    return File(join(rootDir.path, getPathForHash(hash)));
+  File getFileForPath(String path) {
+    // TODO Windows support
+    return File(join(rootDir.path, path));
   }
 
   @override
+  Future<bool> canProvide(Multihash hash, List<int> types) async {
+    for (final type in types) {
+      if (type == storageLocationTypeArchive) {
+        if (await contains(hash)) {
+          return true;
+        }
+      } else if (type == storageLocationTypeFile) {
+        if (await contains(hash)) {
+          return true;
+        }
+      } else if (type == storageLocationTypeFull) {
+        if ((await contains(hash)) &&
+            getFileForPath(getPathForHash(hash, 'obao')).existsSync()) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  @override
+  Future<StorageLocation> provide(Multihash hash, List<int> types) async {
+    for (final type in types) {
+      if (!(await canProvide(hash, [type]))) continue;
+      if (type == storageLocationTypeArchive) {
+        return StorageLocation(
+          storageLocationTypeArchive,
+          [],
+          calculateExpiry(Duration(days: 1)),
+        );
+      } else if (type == storageLocationTypeFile ||
+          type == storageLocationTypeFull) {
+        return StorageLocation(
+          type,
+          [httpServerConfig['url'] + '/' + getPathForHash(hash)],
+          calculateExpiry(Duration(hours: 1)),
+        );
+      }
+    }
+    throw 'Could not provide hash $hash for types $types';
+  }
+
+  // ! uploads
+
+  @override
   Future<bool> contains(Multihash hash) async {
-    return getFileForHash(hash).exists();
+    return getFileForPath(getPathForHash(hash)).exists();
   }
 
   @override
@@ -64,10 +124,27 @@ class LocalObjectStore extends ObjectStore {
       return;
     }
 
-    getFileForHash(hash).parent.createSync(recursive: true);
-    await getFileForHash(hash)
-        .openWrite(mode: FileMode.writeOnly)
-        .addStream(data);
+    final file = getFileForPath(getPathForHash(hash));
+    file.parent.createSync(recursive: true);
+    final sink = file.openWrite(mode: FileMode.writeOnly);
+    await sink.addStream(data);
+    await sink.close();
+  }
+
+  @override
+  Future<void> putBaoOutboardBytes(Multihash hash, Uint8List outboard) {
+    final file = getFileForPath(getPathForHash(hash, 'obao'));
+    file.parent.createSync(recursive: true);
+    return file.writeAsBytes(outboard);
+  }
+
+  @override
+  Future<void> delete(Multihash hash) {
+    final baoOutboardFile = getFileForPath(getPathForHash(hash, 'obao'));
+    if (baoOutboardFile.existsSync()) {
+      baoOutboardFile.deleteSync();
+    }
+    return getFileForPath(getPathForHash(hash)).delete();
   }
 
 /*   @override
@@ -90,14 +167,4 @@ class LocalObjectStore extends ObjectStore {
     getFileForHash(hash).parent.createSync(recursive: true);
     await File(key).rename(getFileForHash(hash).path);
   } */
-
-  @override
-  Future<String> provide(Multihash hash) async {
-    return httpServerConfig['url'] + '/' + getPathForHash(hash);
-  }
-
-  @override
-  Future<void> delete(Multihash hash) {
-    return getFileForHash(hash).delete();
-  }
 }
