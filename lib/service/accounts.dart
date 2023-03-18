@@ -107,7 +107,7 @@ class AccountsService {
 
   Future<void> init() async {
     alwaysAllowedScopes =
-        config['alwaysAllowedScopes'] ?? defaultAlwaysAllowedScopes;
+        config['alwaysAllowedScopes']?.cast<String>() ?? defaultAlwaysAllowedScopes;
     sql = SQLService(config, logger);
 
     await sql.init();

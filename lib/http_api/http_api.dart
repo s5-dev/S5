@@ -93,7 +93,7 @@ class HttpAPIServer {
               )
               .map((key, value) => MapEntry(int.parse(key), value))
               .cast<int, String>(),
-          dirname: queryParams['dirname'],
+          name: queryParams['name'],
         );
 
         return {

@@ -350,7 +350,7 @@ class S5Node {
   Future<List<String>> getS5EntriesForName(String name) async {
     final res = await client.get(
       Uri.https(
-        'easyhandshake.com:8053',
+        'dns0.eu',
         '/dns-query',
         {
           'name': name,
@@ -470,7 +470,7 @@ class S5Node {
 
   Future<CID> uploadMemoryDirectory(
     Map<String, Uint8List> paths, {
-    String? dirname,
+    String? name,
     List<String>? tryFiles,
     Map<int, String>? errorPages,
   }) async {
@@ -481,7 +481,7 @@ class S5Node {
 
     p.packListLength(5);
 
-    p.packString(dirname);
+    p.packString(name);
 
     p.packListLength(tryFiles?.length ?? 0);
 
