@@ -18,6 +18,7 @@ import 'package:pool/pool.dart';
 import 'package:s5_server/db/hive_key_value_db.dart';
 import 'package:s5_server/http_api/serve_chunked_file.dart';
 import 'package:s5_server/store/merge.dart';
+import 'package:s5_server/store/pixeldrain.dart';
 import 'package:s5_server/store/sia.dart';
 import 'package:tint/tint.dart';
 
@@ -104,6 +105,7 @@ class S5Node {
     final s3Config = config['store']?['s3'];
     final localConfig = config['store']?['local'];
     final siaConfig = config['store']?['sia'];
+    final pixeldrainConfig = config['store']?['pixeldrain'];
     final arweaveConfig = config['store']?['arweave'];
     final estuaryConfig = config['store']?['estuary'];
 
@@ -119,6 +121,10 @@ class S5Node {
         s3Config['bucket'],
         cdnUrls: s3Config['cdnUrls']?.cast<String>() ?? <String>[],
       );
+    }
+
+    if (pixeldrainConfig != null) {
+      stores['pixeldrain'] = PixeldrainObjectStore(pixeldrainConfig['apiKey']);
     }
 
     /* if (arweaveConfig != null) {
