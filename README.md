@@ -56,6 +56,7 @@ S5 currently supports three storage backends:
 - Local filesystem (needs additional configuration to make a http port available on the internet)
 - Arweave (expensive, permanent storage)
 - Sia (experimental, https://sia.tech/)
+- Pixeldrain (cheap, high bandwidth https://pixeldrain.com/)
 - Estuary.tech (experimental)
 
 S5 currently supports one protocol to establish a connection between nodes:
