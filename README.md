@@ -52,4 +52,4 @@ To add file stores edit the config as described in the [docs](https://docs.sfive
 
 # License
 
-This project is licensed under the MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+This project is licensed under the MIT license ([LICENSE-MIT](LICENSE) or http://opensource.org/licenses/MIT)
