@@ -37,7 +37,7 @@ services:
       - "5050:5050"
     restart: unless-stopped
 ```
-Keep in mind that the config will be generated if it does not exist, just make sure to set a pth for it to get written to. To add file stores edit the config as perscribed in the [docs](https://docs.sfive.net).
+Keep in mind that the config will be generated if it does not exist, just make sure to set a path for it to get written to. To add file stores edit the config as perscribed in the [docs](https://docs.sfive.net).
 
 ## Supported Backends
 ---
