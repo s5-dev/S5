@@ -16,12 +16,10 @@
 </br>
 
 ## Ethos
----
 
 At its core, S5 is a content-addressed storage network similar to IPFS and also uses many of the formats and standards created in the IPFS project. It just builds upon them to be much more lightweight and scalable. Read the [docs](https://docs.sfive.net) for more info on the nitty gritty.
 
 ## Usage
----
 
 `docker run -it --rm -p 5050:5050 -v /local/path/to/config:/config --name s5-node ghcr.io/s5-dev/node:0.9.2`
 
@@ -42,7 +40,7 @@ services:
 To add file stores edit the config as described in the [docs](https://docs.sfive.net).
 
 ## Supported Storage Backends
----
+
 - S3 (Any cloud provider supporting the S3 protocol, see https://s3.wiki)
 - Local filesystem (needs additional configuration to make a http port available on the internet)
 - Sia (experimental and cheap, https://sia.tech/)
