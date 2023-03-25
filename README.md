@@ -1,7 +1,7 @@
 <h1 align="center">S5</h1>
 <div align="center">
  <strong>
-   Content addressed storage, but fast.
+   Content-addressed storage, but fast.
  </strong>
 </div>
 
