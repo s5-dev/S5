@@ -1,3 +1,13 @@
+## 0.10.0
+
+- Added new admin API for account management
+- `auth_token` can now be passed as query parameter for all endpoints
+- Added `deleteCID` method
+- Improved tus upload auth
+- accounts: New "invite code" feature for registration
+- accounts: Moved API endpoints (removed subdomain requirement)
+- accounts: Improved pinning API
+
 ## 0.9.2
 
 - Add support for the **Sia storage network** using **renterd**
