@@ -14,9 +14,11 @@ import 'package:lib5/util.dart';
 import 'package:messagepack/messagepack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
+import 'package:s5_server/accounts/user.dart';
 
 import 'package:s5_server/constants.dart';
 import 'package:s5_server/download/uri_provider.dart';
+import 'package:s5_server/http_api/admin.dart';
 import 'package:s5_server/node.dart';
 import 'package:s5_server/service/accounts.dart';
 import 'package:s5_server/util/uid.dart';
@@ -26,10 +28,18 @@ import 'serve_chunked_file.dart';
 class HttpAPIServer {
   final S5Node node;
 
-  HttpAPIServer(this.node);
+  HttpAPIServer(this.node) {
+    adminAPI = AdminAPI(node);
+  }
+
+  final app = Alfred();
+
+  late final AdminAPI adminAPI;
 
   Future<void> start(String cachePath) async {
-    final app = Alfred();
+    if (node.config['http']?['api']?['admin']?['enabled'] != false) {
+      adminAPI.init(app);
+    }
 
     app.get(
       '/',
@@ -193,12 +203,23 @@ class HttpAPIServer {
         return 'Endpoint disabled in config.toml';
       }
       final cid = CID.decode(req.params['cid']);
-      await node.deleteFile(cid);
-      // TODO Unpin file from account
+
+      if (auth.user != null) {
+        final shouldDelete = await node.accounts!.deleteObjectPin(
+          user: auth.user!,
+          hash: cid.hash,
+        );
+        if (shouldDelete) {
+          await node.deleteFile(cid);
+        }
+      } else {
+        await node.deleteFile(cid);
+      }
     });
 
     app.head('/s5/pin/:cid', (req, res) => '');
 
+    // TODO Add ?routingHints=
     app.post('/s5/pin/:cid', (req, res) async {
       final auth = await node.checkAuth(req, 's5/pin');
       if (auth.denied) return res.unauthorized(auth);
@@ -235,9 +256,6 @@ class HttpAPIServer {
     final tusUploadSessions = <String, TusUploadSession>{};
 
     app.head('/s5/upload/tus/:id', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/upload/tus');
-      if (auth.denied) return res.unauthorized(auth);
-
       final uploadId = req.params['id'] as String;
       final tus = tusUploadSessions[uploadId];
       if (tus == null) {
@@ -255,9 +273,6 @@ class HttpAPIServer {
     });
 
     app.patch('/s5/upload/tus/:id', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/upload/tus');
-      if (auth.denied) return res.unauthorized(auth);
-
       final uploadId = req.params['id'] as String;
       final tus = tusUploadSessions[uploadId];
       if (tus == null) {
@@ -288,9 +303,9 @@ class HttpAPIServer {
           throw 'Invalid hash found';
         }
 
-        if (auth.user != null) {
+        if (tus.user != null) {
           await node.accounts!.addObjectPinToUser(
-            user: auth.user!,
+            user: tus.user!,
             hash: tus.expectedHash,
             size: tus.totalLength,
           );
@@ -344,6 +359,7 @@ class HttpAPIServer {
         totalLength: uploadLength,
         expectedHash: mhash,
         cacheFile: cacheFile,
+        user: auth.user,
       );
 
       final location =
@@ -866,20 +882,6 @@ class HttpAPIServer {
 
         final parts = uri.host.split('.');
 
-        if (parts[0] == 'account') {
-          if (node.accounts == null) {
-            res.statusCode = HttpStatus.notFound;
-            res.write('Accounts module not enabled on this portal');
-            res.close();
-            return;
-          } else {
-            node.accounts!.app.requestQueue.add(
-              () => node.accounts!.app.incomingRequest(request),
-            );
-            return;
-          }
-        }
-
         final String? domain = node.config['http']?['api']?['domain'];
 
         if (domain != null) {
@@ -1035,10 +1037,12 @@ class TusUploadSession {
   final Multihash expectedHash;
   final int totalLength;
   final File cacheFile;
+  final User? user;
 
   TusUploadSession({
     required this.totalLength,
     required this.expectedHash,
     required this.cacheFile,
+    this.user,
   });
 }

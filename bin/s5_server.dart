@@ -82,9 +82,6 @@ path = "data/hive"
 [http.api]
 port = 5050
 
-[http.api.delete]
-enabled = false
-
 [p2p.peers]
 initial = [
   'tcp://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@199.247.20.119:4444', # s5.garden
@@ -109,9 +106,6 @@ path = "/db"
 [http.api]
 port = 5050
 bind = '0.0.0.0'
-
-[http.api.delete]
-enabled = false
 
 [p2p.peers]
 initial = [
