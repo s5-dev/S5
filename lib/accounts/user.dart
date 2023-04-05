@@ -9,4 +9,10 @@ class User {
     required this.createdAt,
     required this.email,
   });
+  toJson() => {
+        'id': id,
+        'createdAt': createdAt,
+        'email': email,
+        'tier': tier,
+      };
 }
