@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:alfred/alfred.dart';
+import 'package:base_codecs/base_codecs.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
 
@@ -34,8 +35,6 @@ class AccountsService {
   });
   late SQLService sql;
 
-  late final Alfred app;
-
   late final List<String> alwaysAllowedScopes;
   final defaultAlwaysAllowedScopes = [
     'account/login',
@@ -47,6 +46,8 @@ class AccountsService {
     's5/debug/download_urls',
     's5/blob/redirect',
   ];
+
+  late final List<String> authTokensForAccountRegistration;
 
   Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
     if (alwaysAllowedScopes.contains(scope)) {
@@ -73,20 +74,42 @@ class AccountsService {
       }
 
       if (token == null) {
-        // TODO Check if scope is public
+        try {
+          token = req.uri.queryParameters['auth_token'];
+        } catch (_) {}
+      }
+
+      if (token == null) {
         return AuthResponse(
           user: null,
           denied: true,
-          error: 'No token found',
+          error: 'No auth token found',
         );
       }
+
+      if (scope == 'account/register') {
+        if (authTokensForAccountRegistration.contains(token)) {
+          return AuthResponse(
+            user: null,
+            denied: false,
+            error: null,
+          );
+        } else {
+          return AuthResponse(
+            user: null,
+            denied: true,
+            error: 'Invalid auth token',
+          );
+        }
+      }
+
       final user = await getUserByAuthToken(token);
 
       if (user == null) {
         return AuthResponse(
           user: null,
           denied: true,
-          error: 'Invalid token',
+          error: 'Invalid auth token',
         );
       }
 
@@ -105,18 +128,25 @@ class AccountsService {
     }
   }
 
-  Future<void> init() async {
-    alwaysAllowedScopes =
-        config['alwaysAllowedScopes']?.cast<String>() ?? defaultAlwaysAllowedScopes;
+  Future<void> init(Alfred app) async {
+    alwaysAllowedScopes = config['alwaysAllowedScopes']?.cast<String>() ??
+        defaultAlwaysAllowedScopes;
+
+    authTokensForAccountRegistration =
+        config['authTokensForAccountRegistration']?.cast<String>() ?? [];
+
     sql = SQLService(config, logger);
 
     await sql.init();
-    app = Alfred();
+
+    if ((await sql.db.query('User', limit: 1)).isEmpty) {
+      await createUser(null);
+    }
 
     final registerChallenges = <String, Uint8List>{};
 
     app.get(
-      '/api/register',
+      '/s5/account/register',
       (req, res) async {
         final auth = await checkAuth(req, 'account/register');
         if (auth.denied) return res.unauthorized(auth);
@@ -132,7 +162,7 @@ class AccountsService {
       },
     );
 
-    app.post('/api/register', (req, res) async {
+    app.post('/s5/account/register', (req, res) async {
       final auth = await checkAuth(req, 'account/register');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -190,7 +220,7 @@ class AccountsService {
     final loginChallenges = <String, Uint8List>{};
 
     app.get(
-      '/api/login',
+      '/s5/account/login',
       (req, res) async {
         final auth = await checkAuth(req, 'account/login');
         if (auth.denied) return res.unauthorized(auth);
@@ -205,7 +235,7 @@ class AccountsService {
       },
     );
 
-    app.post('/api/login', (req, res) async {
+    app.post('/s5/account/login', (req, res) async {
       final auth = await checkAuth(req, 'account/login');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -298,7 +328,7 @@ class AccountsService {
       }
     ];
 
-    app.get('/api/user', (req, res) async {
+    app.get('/s5/account', (req, res) async {
       final auth = await checkAuth(req, 'account/api/user');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -311,7 +341,7 @@ class AccountsService {
       };
     });
 
-    app.get('/api/user/stats', (req, res) async {
+    app.get('/s5/account/stats', (req, res) async {
       final auth = await checkAuth(req, 'account/api/user');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -327,7 +357,7 @@ class AccountsService {
       };
     });
 
-    app.get('/api/user/pins.bin', (req, res) async {
+    app.get('/s5/account/pins.bin', (req, res) async {
       final auth = await checkAuth(req, 'account/api/user/pins');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -380,6 +410,10 @@ WHERE user_id = ?''', [id]);
       limit: 1,
     );
 
+    if (cursorRes.isEmpty) {
+      return 0;
+    }
+
     return cursorRes.first['created_at'] as int;
   }
 
@@ -402,6 +436,8 @@ WHERE user_id = ? AND created_at >= ?''',
     required Multihash hash,
     required int size,
   }) async {
+    // TODO Improve performance
+
     if (size != 0) {
       try {
         await sql.db.insert('Object', {
@@ -412,11 +448,40 @@ WHERE user_id = ? AND created_at >= ?''',
         });
       } catch (_) {}
     }
-    await sql.db.insert('Pin', {
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-      'object_hash': hash.fullBytes,
-      'user_id': user.id,
-    });
+
+    final res = await sql.db.rawQuery(
+      '''SELECT id
+FROM Pin
+WHERE user_id = ? AND object_hash = ?''',
+      [user.id, hash.fullBytes],
+    );
+    if (res.isEmpty) {
+      await sql.db.insert('Pin', {
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'object_hash': hash.fullBytes,
+        'user_id': user.id,
+      });
+    }
+  }
+
+  /// returns true if no user pins the file (so it should be deleted)
+  Future<bool> deleteObjectPin({
+    required User user,
+    required Multihash hash,
+  }) async {
+    await sql.db.delete(
+      'Pin',
+      where: 'user_id = ? AND object_hash = ?',
+      whereArgs: [user.id, hash.fullBytes],
+    );
+
+    final res = await sql.db.rawQuery(
+      '''SELECT id
+FROM Pin
+WHERE object_hash = ?''',
+      [hash.fullBytes],
+    );
+    return res.isEmpty;
   }
 
   void setSetCookieHeader(HttpResponse res, String token, String domain) {
@@ -446,6 +511,19 @@ WHERE user_id = ? AND created_at >= ?''',
       createdAt: user['created_at'] as int,
       email: user['email'] as String?,
     );
+  }
+
+  Future<List<User>> getAllUsers() async {
+    final res = await sql.db.query(
+      'User',
+    );
+    return res
+        .map<User>((user) => User(
+              id: user['id'] as int,
+              createdAt: user['created_at'] as int,
+              email: user['email'] as String?,
+            ))
+        .toList();
   }
 
   Future<User?> getUserByAuthToken(String token) async {
@@ -478,9 +556,9 @@ WHERE ID = (
   }
 
   Future<String> createAuthTokenForUser(int userId, String label) async {
-    final token = crypto.generateRandomBytes(64);
+    final token = crypto.generateRandomBytes(32);
 
-    final authToken = base64UrlNoPaddingEncode(token);
+    final authToken = 'S5A' + base58BitcoinEncode(token);
 
     await sql.db.insert('AuthToken', {
       'token': authToken,
