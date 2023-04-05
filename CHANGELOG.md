@@ -1,6 +1,7 @@
 ## 0.10.0
 
-- Added new admin API for account management
+- Added new **admin API** for account management
+- Added **Pixeldrain** object store
 - `auth_token` can now be passed as query parameter for all endpoints
 - Added `deleteCID` method
 - Improved tus upload auth
