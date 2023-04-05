@@ -7,35 +7,31 @@ import 'dart:typed_data';
 import 'package:cancellation_token/cancellation_token.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
+import 'package:messagepack/messagepack.dart';
+import 'package:mime/mime.dart';
+import 'package:path/path.dart';
+import 'package:pool/pool.dart';
+import 'package:tint/tint.dart';
+
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
-import 'package:messagepack/messagepack.dart';
-import 'package:mime/mime.dart';
-import 'package:minio/minio.dart';
-import 'package:path/path.dart';
-import 'package:pool/pool.dart';
-import 'package:s5_server/db/hive_key_value_db.dart';
-import 'package:s5_server/http_api/serve_chunked_file.dart';
-import 'package:s5_server/store/merge.dart';
-import 'package:s5_server/store/pixeldrain.dart';
-import 'package:s5_server/store/sia.dart';
-import 'package:tint/tint.dart';
-
-import 'package:s5_server/download/uri_provider.dart';
-import 'package:s5_server/http_api/http_api.dart';
-import 'package:s5_server/logger/base.dart';
-import 'package:s5_server/rust/bridge_definitions.dart';
-import 'package:s5_server/service/accounts.dart';
-import 'package:s5_server/service/cache_cleaner.dart';
-import 'package:s5_server/service/p2p.dart';
-import 'package:s5_server/service/registry.dart';
-import 'package:s5_server/store/local.dart';
 
 import 'accounts/user.dart';
 import 'constants.dart';
+import 'db/hive_key_value_db.dart';
+import 'download/uri_provider.dart';
+import 'http_api/http_api.dart';
+import 'http_api/serve_chunked_file.dart';
+import 'logger/base.dart';
+import 'rust/bridge_definitions.dart';
+import 'service/accounts.dart';
+import 'service/cache_cleaner.dart';
+import 'service/p2p.dart';
+import 'service/registry.dart';
 import 'store/base.dart';
-import 'store/s3.dart';
+import 'store/create.dart';
+import 'store/merge.dart';
 
 class S5Node {
   final Map<String, dynamic> config;
@@ -102,79 +98,10 @@ class S5Node {
 
     exposeStore = config['store']?['expose'] ?? true;
 
-    final s3Config = config['store']?['s3'];
-    final localConfig = config['store']?['local'];
-    final siaConfig = config['store']?['sia'];
-    final pixeldrainConfig = config['store']?['pixeldrain'];
-    final arweaveConfig = config['store']?['arweave'];
-    final estuaryConfig = config['store']?['estuary'];
-
-    final stores = <String, ObjectStore>{};
-
-    if (s3Config != null) {
-      stores['s3'] = S3ObjectStore(
-        Minio(
-          endPoint: s3Config['endpoint'],
-          accessKey: s3Config['accessKey'],
-          secretKey: s3Config['secretKey'],
-        ),
-        s3Config['bucket'],
-        cdnUrls: s3Config['cdnUrls']?.cast<String>() ?? <String>[],
-      );
-    }
-
-    if (pixeldrainConfig != null) {
-      stores['pixeldrain'] = PixeldrainObjectStore(pixeldrainConfig['apiKey']);
-    }
-
-    /* if (arweaveConfig != null) {
-      store = ArweaveObjectStore(
-        Arweave(
-          gatewayUrl: Uri.parse(
-            arweaveConfig['gatewayUrl'],
-          ),
-        ),
-        Wallet.fromJwk(
-          json.decode(
-            File(arweaveConfig['walletPath']).readAsStringSync(),
-          ),
-        ),
-      );
-
-      logger.info(
-        'Using Arweave wallet ${await (store as ArweaveObjectStore).wallet.getAddress()}',
-      );
-    } */
-
-    if (localConfig != null) {
-      stores['local'] = LocalObjectStore(
-        Directory(localConfig['path']!),
-        localConfig['http'],
-      );
-    }
-
-    /* if (metadataBridgeConfig != null) {
-      stores['bridge'] = MetadataBridgeObjectStore(
-          crypto: crypto,
-      );
-    } */
-
-    /* if (estuaryConfig != null) {
-      store = EstuaryObjectStore(
-        apiUrl: estuaryConfig['apiUrl'] ?? 'https://api.estuary.tech',
-        apiKey: estuaryConfig['apiKey'],
-        httpClient: client,
-      );
-    } */
-
-    if (siaConfig != null) {
-      stores['sia'] = SiaObjectStore(
-        workerApiUrl: siaConfig['workerApiUrl']!,
-        apiPassword: siaConfig['apiPassword']!,
-        downloadUrls: [siaConfig['downloadUrl']!],
-        httpClient: httpClient,
-      );
-    }
+    final stores = createStoresFromConfig(
+      config,
+      httpClient: httpClient,
+    );
 
     if (stores.isEmpty) {
       exposeStore = false;
@@ -202,6 +129,8 @@ class S5Node {
 
     await p2p.start();
 
+    final httpAPIServer = HttpAPIServer(this);
+
     final accountsConfig = config['accounts'];
     if (accountsConfig?['enabled'] == true) {
       accounts = AccountsService(
@@ -209,10 +138,8 @@ class S5Node {
         logger: logger,
         crypto: crypto,
       );
-      await accounts!.init();
+      await accounts!.init(httpAPIServer.app);
     }
-
-    final httpAPIServer = HttpAPIServer(this);
 
     await httpAPIServer.start(cachePath);
 

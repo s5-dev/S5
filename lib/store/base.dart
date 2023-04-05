@@ -9,6 +9,8 @@ abstract class ObjectStore {
 
   bool get uploadsSupported;
 
+  // TODO Maybe make canProvide sync
+
   // ! used for downloads / p2p requests
   Future<bool> canProvide(
     Multihash hash,
