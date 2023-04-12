@@ -48,6 +48,25 @@ To add file stores edit the config as described in the [docs](https://docs.sfive
 - Pixeldrain (affordable, https://pixeldrain.com/)
 - Estuary.tech (experimental)
 
+## Development
+
+### Dependencies
+
+- Dart (https://dart.dev/get-dart)
+- Rust (https://www.rust-lang.org/tools/install)
+- Build dependencies (Debian/Ubuntu: `sudo apt install build-essential pkg-config libssl-dev libclang-dev`)
+
+### Build
+
+- `git clone https://github.com/s5-dev/s5.git`
+- `cd s5/rust`
+- `cargo build --release`
+- `cp target/release/librust.so ..`
+- `cd ..`
+- `dart compile exe bin/s5_server.dart`
+
+Run the node with `./bin/s5_server.exe config.toml`
+
 # License
 
 This project is licensed under the MIT license ([LICENSE-MIT](LICENSE) or http://opensource.org/licenses/MIT)
