@@ -12,7 +12,7 @@ pub fn encrypt_xchacha20poly1305(
     key: Vec<u8>,
     nonce: Vec<u8>,
     plaintext: Vec<u8>,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> anyhow::Result<Vec<u8>> {
     let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(&key));
     let xnonce = XNonce::from_slice(&nonce);
     let ciphertext = cipher.encrypt(&xnonce, &plaintext[..]);
@@ -23,7 +23,7 @@ pub fn decrypt_xchacha20poly1305(
     key: Vec<u8>,
     nonce: Vec<u8>,
     ciphertext: Vec<u8>,
-) -> Result<Vec<u8>, anyhow::Error> {
+) -> anyhow::Result<Vec<u8>> {
     let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(&key));
     let xnonce = XNonce::from_slice(&nonce);
 
@@ -31,7 +31,7 @@ pub fn decrypt_xchacha20poly1305(
     Ok(plaintext.unwrap())
 }
 
-fn blake3_digest<R: Read>(mut reader: R) -> Result<Hash, anyhow::Error> {
+fn blake3_digest<R: Read>(mut reader: R) -> anyhow::Result<Hash> {
     let mut hasher = blake3::Hasher::new();
 
     let mut buffer = [0; 1048576];
@@ -47,7 +47,7 @@ fn blake3_digest<R: Read>(mut reader: R) -> Result<Hash, anyhow::Error> {
     Ok(hasher.finalize())
 }
 
-pub fn hash_blake3_file(path: String) -> Result<Vec<u8>, anyhow::Error> {
+pub fn hash_blake3_file(path: String) -> anyhow::Result<Vec<u8>> {
     let input = File::open(path)?;
     let reader = BufReader::new(input);
     let digest = blake3_digest(reader)?;
@@ -55,7 +55,7 @@ pub fn hash_blake3_file(path: String) -> Result<Vec<u8>, anyhow::Error> {
     Ok(digest.as_bytes().to_vec())
 }
 
-pub fn hash_blake3(input: Vec<u8>) -> Result<Vec<u8>, anyhow::Error> {
+pub fn hash_blake3(input: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     let digest = blake3::hash(&input);
     Ok(digest.as_bytes().to_vec())
 }
@@ -70,17 +70,17 @@ pub fn verify_integrity(
     offset: u64,
     bao_outboard_bytes: Vec<u8>,
     blake3_hash: Vec<u8>,
-) -> Result<u8, anyhow::Error> {
-    let mut slice_stream = bao::encode::SliceExtractor::new_outboard(
+) -> anyhow::Result<u8> {
+    let mut slice_stream = abao::encode::SliceExtractor::new_outboard(
         FakeSeeker::new(&chunk_bytes[..]),
         Cursor::new(&bao_outboard_bytes),
         offset,
         262144,
     );
 
-    let mut decode_stream = bao::decode::SliceDecoder::new(
+    let mut decode_stream = abao::decode::SliceDecoder::new(
         &mut slice_stream,
-        &bao::Hash::from(from_vec_to_array(blake3_hash)),
+        &abao::Hash::from(from_vec_to_array(blake3_hash)),
         offset,
         262144,
     );
@@ -119,7 +119,7 @@ impl<R: Read> Seek for FakeSeeker<R> {
     }
 }
 
-pub fn hash_bao_file(path: String) -> Result<BaoResult, anyhow::Error> {
+pub fn hash_bao_file(path: String) -> anyhow::Result<BaoResult> {
     let input = File::open(path)?;
     let reader = BufReader::new(input);
 
@@ -128,7 +128,7 @@ pub fn hash_bao_file(path: String) -> Result<BaoResult, anyhow::Error> {
     Ok(result.unwrap())
 }
 
-pub fn hash_bao_memory(bytes: Vec<u8>) -> Result<BaoResult, anyhow::Error> {
+pub fn hash_bao_memory(bytes: Vec<u8>) -> anyhow::Result<BaoResult> {
     let result = hash_bao_file_internal(&bytes[..]);
 
     Ok(result.unwrap())
@@ -139,12 +139,12 @@ pub struct BaoResult {
     pub outboard: Vec<u8>,
 }
 
-fn hash_bao_file_internal<R: Read>(mut reader: R) -> Result<BaoResult, anyhow::Error> {
+fn hash_bao_file_internal<R: Read>(mut reader: R) -> anyhow::Result<BaoResult> {
     let mut encoded_incrementally = Vec::new();
 
     let encoded_cursor = std::io::Cursor::new(&mut encoded_incrementally);
 
-    let mut encoder = bao::encode::Encoder::new_outboard(encoded_cursor);
+    let mut encoder = abao::encode::Encoder::new_outboard(encoded_cursor);
 
     let mut buffer = [0; 262144];
 
