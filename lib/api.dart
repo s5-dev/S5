@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:hive/hive.dart';
 import 'package:http/src/client.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/storage_service.dart';
@@ -8,7 +9,10 @@ import 'node.dart';
 
 class S5NodeAPIProviderWithRemoteUpload extends S5APIProviderWithRemoteUpload {
   final S5Node node;
-  S5NodeAPIProviderWithRemoteUpload(this.node);
+
+  final Box<Uint8List> deletedCIDs;
+
+  S5NodeAPIProviderWithRemoteUpload(this.node, {required this.deletedCIDs});
 
   @override
   Client get httpClient => node.client;
@@ -19,6 +23,11 @@ class S5NodeAPIProviderWithRemoteUpload extends S5APIProviderWithRemoteUpload {
   @override
   Future<Uint8List> downloadRawFile(Multihash hash) =>
       node.downloadBytesByHash(hash);
+
+  @override
+  void deleteCID(CID cid) {
+    deletedCIDs.add(cid.toBytes());
+  }
 
   @override
   Future<Metadata> getMetadataByCID(CID cid) => node.getMetadataByCID(cid);
