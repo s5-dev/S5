@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:xml/xml.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -20,6 +21,29 @@ class WebDAVObjectStore extends ObjectStore {
   @override
   Future<void> init() async {
     // No initialization required for WebDAV
+
+    var authn = 'Basic ' + base64Encode(utf8.encode('$username:$password'));
+
+    final request = new http.Request('PROPFIND', Uri.parse('$baseUrl'));
+
+    request.headers['Authorization'] = authn;
+
+    final response = await request.send();
+
+    print(response.statusCode);
+
+    final respStr = await response.stream.bytesToString();
+
+    final respXml = XmlDocument.parse(respStr);
+
+    final titles = respXml.findAllElements('d:href');
+
+  //titles.map((node) => node.text).forEach(print);
+    titles.forEach((node) => { print(node.text), print((node.text).split('/')[6])                    });
+
+  //print(titles);
+
+
   }
 
   @override
@@ -121,6 +145,8 @@ class WebDAVObjectStore extends ObjectStore {
       throw Exception('WebDAV upload failed: HTTP ${response.statusCode}');
     }
     availableHashes = { hash: '${getObjectKeyForHash(hash)}' };
+
+print(availableHashes);
   }
 
   @override
@@ -141,6 +167,9 @@ class WebDAVObjectStore extends ObjectStore {
       throw Exception('WebDAV upload failed: HTTP ${response.statusCode}');
     }
     availableBaoOutboardHashes[hash] = '${getObjectKeyForHash(hash)}';
+print(availableBaoOutboardHashes);
+
+
   }
 
   @override

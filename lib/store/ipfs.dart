@@ -16,24 +16,60 @@ class IpfsObjectStore extends ObjectStore {
   var availableHashes = <Multihash, String>{};
   var availableBaoOutboardHashes = <Multihash, String>{};
 
+  Uri _getApiUri(String path) {
+    return Uri.parse('$apiUrl/api$path');
+  }
+
+  String getObjectKeyForHash(Multihash hash, [String? ext]) {
+    if (ext != null) {
+      return '${hash.toBase64Url()}/$ext';
+    }
+    return hash.toBase64Url();
+  }
+
+
   @override
   Future<void> init() async {
-    // No initialization required for ipfs
+    final headers = { "Authorization": "Basic $token" };
+
+    final uri = _getApiUri('/v0/files/mkdir?arg=/s5data&parents=true');
+    final res = await http.post(Uri.parse('$uri'), headers: headers);
+
+    final uri1 = _getApiUri('/v0/files/ls?arg=/s5data&long=true');
+    final res1 = await http.post(Uri.parse('$uri1'), headers: headers);
+    final body = json.decode(res1.body);
+
+//    print(res1.body);
+//    print(res1.statusCode);
+//    print(body['Entries'].length);
+//    print(body.runtimeType);
+
+    if (body['Entries'] != null) {
+      var num = body['Entries'].length;
+
+      for (int i = 0; i < num; i++) {
+        var hname = body['Entries'][i]['Name'];
+        var hhash = body['Entries'][i]['Hash'];
+
+        if (hname.endsWith('.obao')) {
+          var sname = hname.split('.');
+          availableBaoOutboardHashes[Multihash.fromBase64Url(sname[0])] = '${hhash}';
+        } else {
+          availableHashes[Multihash.fromBase64Url(hname)] = '${hhash}';
+        }
+      }
+      print(' ');
+      print('availableBaoOutboardHashes: ');
+      print(availableBaoOutboardHashes);
+      print(' ');
+      print('availableHashes: ');
+      print(availableHashes);
+      print(' ');
+    }
   }
 
   @override
   final uploadsSupported = true;
-
-  String getObjectKeyForHash(Multihash hash, [String? ext]) {
-    if (ext != null) {
-      return '${hash.toBase58()}/$ext';
-    }
-    return hash.toBase58();
-  }
-
-  Uri _getApiUri(String path) {
-    return Uri.parse('$apiUrl/api$path');
-  }
 
   @override
   Future<bool> canProvide(Multihash hash, List<int> types) async {
@@ -90,9 +126,6 @@ class IpfsObjectStore extends ObjectStore {
 
   @override
   Future<bool> contains(Multihash hash) async {
-//    final uri = _getApiUri('/v0/object/stat/${availableHashes[hash]!}');
-//    final res = await http.head(Uri.parse('$uri'));
-//    return res.statusCode == 200;
     return availableHashes.containsKey(hash);
   }
 
@@ -121,7 +154,6 @@ class IpfsObjectStore extends ObjectStore {
 
     final response = await request.send();
     final responseBody = await response.stream.bytesToString();
-//    print(responseBody);
 
     final responseJson = json.decode(responseBody);
     if (responseJson.containsKey('Hash')) {
@@ -135,6 +167,10 @@ class IpfsObjectStore extends ObjectStore {
 
     final responseJson1 = json.decode(responseBody);
     final ipfsHash2 = responseJson1['Hash'];
+
+    final headers1 = { "Authorization": "Basic $token" };
+    final uri1 = _getApiUri('/v0/files/cp?arg=/ipfs/$ipfsHash2&arg=/s5data/${getObjectKeyForHash(hash)}');
+    final res1 = await http.post(Uri.parse('$uri1'), headers: headers1);
 
     availableHashes = { hash: '$ipfsHash2' };
   }
@@ -166,12 +202,17 @@ class IpfsObjectStore extends ObjectStore {
     final responseJson = json.decode(await response.stream.bytesToString());
     final ipfsHash = responseJson['Hash'];
 
+    final headers1 = { "Authorization": "Basic $token" };
+    final uri1 = _getApiUri('/v0/files/cp?arg=/ipfs/$ipfsHash&arg=/s5data/${getObjectKeyForHash(hash)}.obao');
+    final res1 = await http.post(Uri.parse('$uri1'), headers: headers1);
+
     availableBaoOutboardHashes[hash] = '$ipfsHash';
   }
 
   @override
   Future<void> delete(Multihash hash) async {
     final uri = _getApiUri('/v0/pin/rm?arg=');
+    final uri2 = _getApiUri('/v0/files/rm?arg=/s5data/');
 
     if (availableBaoOutboardHashes.containsKey(hash)) {
       final res = await http.post(
@@ -180,6 +221,14 @@ class IpfsObjectStore extends ObjectStore {
       );
       if (res.statusCode != 200) {
         throw 'HTTP ${res.statusCode}: ${res.body}';
+      }
+
+      final res2 = await http.post(
+        Uri.parse('$uri2${hash}.obao'),
+        headers: { "Authorization": "Basic $token" },
+      );
+      if (res2.statusCode != 200) {
+        throw 'HTTP ${res.statusCode}: ${res2.body}';
       }
 
       availableBaoOutboardHashes.remove(hash);
@@ -192,6 +241,14 @@ class IpfsObjectStore extends ObjectStore {
       );
       if (res.statusCode != 200) {
         throw 'HTTP ${res.statusCode}: ${res.body}';
+      }
+
+      final res2 = await http.post(
+        Uri.parse('$uri2${hash}'),
+        headers: { "Authorization": "Basic $token" },
+      );
+      if (res2.statusCode != 200) {
+        throw 'HTTP ${res.statusCode}: ${res2.body}';
       }
 
       availableHashes.remove(hash);
