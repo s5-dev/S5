@@ -20,30 +20,33 @@ class WebDAVObjectStore extends ObjectStore {
 
   @override
   Future<void> init() async {
-    // No initialization required for WebDAV
-
-    var authn = 'Basic ' + base64Encode(utf8.encode('$username:$password'));
-
-    final request = new http.Request('PROPFIND', Uri.parse('$baseUrl'));
-
+    final uri = Uri.parse(baseUrl);
+    final authn = 'Basic ' + base64Encode(utf8.encode('$username:$password'));
+    final request = new http.Request('PROPFIND', uri);
     request.headers['Authorization'] = authn;
-
+    request.headers['Depth'] = '1';
     final response = await request.send();
-
-    print(response.statusCode);
-
     final respStr = await response.stream.bytesToString();
-
     final respXml = XmlDocument.parse(respStr);
+    final allHref = respXml
+        .findAllElements('d:response')
+        .map((e) => e.findAllElements('d:href').first.text)
+        .followedBy(respXml
+            .findAllElements('D:response')
+            .map((e) => e.findAllElements('D:href').first.text))
+        .followedBy(respXml
+            .findAllElements('a:response')
+            .map((e) => e.findAllElements('a:href').first.text));
 
-    final titles = respXml.findAllElements('d:href');
-
-  //titles.map((node) => node.text).forEach(print);
-    titles.forEach((node) => { print(node.text), print((node.text).split('/')[6])                    });
-
-  //print(titles);
-
-
+    for (final href in allHref) {
+      final foundFilenames = href.split(uri.path).last;
+      if (foundFilenames.endsWith('.obao')) {
+        final obaoSplitedFromFilename = foundFilenames.split('.');
+        availableBaoOutboardHashes[Multihash.fromBase64Url(obaoSplitedFromFilename[0])] = obaoSplitedFromFilename[0];
+      } else if (foundFilenames.isNotEmpty) {
+        availableHashes[Multihash.fromBase64Url(foundFilenames)] = foundFilenames;
+      }
+    }
   }
 
   @override
@@ -92,9 +95,7 @@ class WebDAVObjectStore extends ObjectStore {
   Future<StorageLocation> provide(Multihash hash, List<int> types) async {
     for (final type in types) {
       if (!(await canProvide(hash, [type]))) continue;
-
       final fileUrl = '${publicUrl}${availableHashes[hash]!}';
-
       if (type == storageLocationTypeArchive) {
         return StorageLocation(
           storageLocationTypeArchive,
@@ -108,9 +109,7 @@ class WebDAVObjectStore extends ObjectStore {
           calculateExpiry(Duration(hours: 1)),
         );
       } else if (type == storageLocationTypeFull) {
-
         final outboardUrl = '${publicUrl}${availableBaoOutboardHashes[hash]!}.obao';
-
         return StorageLocation(
           storageLocationTypeFull,
           [fileUrl, outboardUrl],
@@ -133,20 +132,15 @@ class WebDAVObjectStore extends ObjectStore {
     }
 
     final request = http.Request('PUT', Uri.parse('$baseUrl${getObjectKeyForHash(hash)}'));
-
     request.bodyBytes = await data.toList().then((list) => list.expand((x) => x).toList());
-//    if (username != "" && password != "") {
-      request.headers.addAll(_getHeaders());
-//    }
+    request.headers.addAll(_getHeaders());
     request.headers[HttpHeaders.contentLengthHeader] = length.toString();
 
     final response = await request.send();
     if (response.statusCode != 201 && response.statusCode != 204) {
       throw Exception('WebDAV upload failed: HTTP ${response.statusCode}');
     }
-    availableHashes = { hash: '${getObjectKeyForHash(hash)}' };
-
-print(availableHashes);
+    availableHashes[hash] = '${getObjectKeyForHash(hash)}';
   }
 
   @override
@@ -156,67 +150,36 @@ print(availableHashes);
     }
 
     final request = http.Request('PUT', Uri.parse('$baseUrl${getObjectKeyForHash(hash)}.obao'));
-
     request.bodyBytes = outboard;
-    if (username != "" && password != "") {
-      request.headers.addAll(_getHeaders());
-    }
+    request.headers.addAll(_getHeaders());
 
     final response = await request.send();
     if (response.statusCode != 201 && response.statusCode != 204) {
       throw Exception('WebDAV upload failed: HTTP ${response.statusCode}');
     }
     availableBaoOutboardHashes[hash] = '${getObjectKeyForHash(hash)}';
-print(availableBaoOutboardHashes);
-
-
   }
 
   @override
   Future<void> delete(Multihash hash) async {
-//    if (availableBaoOutboardHashes.containsKey(hash)) {
-      if (username != "" && password != "") {
+    final key = getObjectKeyForHash(hash);
+    final smallFile = availableHashes.containsKey(hash);
+    final outboard = availableBaoOutboardHashes.containsKey(hash);
+    final auth = (username?.isNotEmpty == true && password?.isNotEmpty == true)
+        ? base64.encode(utf8.encode('$username:$password'))
+        : null;
+    final uri = Uri.parse('$baseUrl${outboard ? key + '.obao' : key}');
+    final smallUri = Uri.parse('$baseUrl${smallFile ? key : key}');
 
-        final auth = base64.encode(utf8.encode('$username:$password'));
-
-        final res = await http.delete(
-          Uri.parse('$baseUrl${getObjectKeyForHash(hash)}.obao'),
-          headers: { "Authorization": "Basic $auth" },
-        );
-        if (res.statusCode != 201 && res.statusCode != 204 && res.statusCode != 404) {
-          throw 'HTTP ${res.statusCode}: ${res.body}';
-        }
-      } else {
-        final res = await http.delete(
-          Uri.parse('$baseUrl${getObjectKeyForHash(hash)}.obao'),
-        );
-        if (res.statusCode != 201 && res.statusCode != 204 && res.statusCode != 404) {
-          throw 'HTTP ${res.statusCode}: ${res.body}';
-        }
-      }
+    final res = await http.delete(uri, headers: auth != null ? { 'Authorization': 'Basic $auth' } : null);
+    final res2 = await http.delete(smallUri, headers: auth != null ? { 'Authorization': 'Basic $auth' } : null);
+    if (![201, 204, 404].contains(res.statusCode)) {
+      throw 'HTTP ${res.statusCode}: ${res.body}';
+    }
+    if (outboard) {
       availableBaoOutboardHashes.remove(hash);
-//    }
-
-//    if (availableHashes.containsKey(hash)) {
-      if (username != "" && password != "") {
-        final auth = base64.encode(utf8.encode('$username:$password'));
-
-        final res = await http.delete(
-          Uri.parse('$baseUrl${getObjectKeyForHash(hash)}'),
-          headers: { "Authorization": "Basic $auth" },
-        );
-        if (res.statusCode != 201 && res.statusCode != 204 && res.statusCode != 404) {
-          throw 'HTTP ${res.statusCode}: ${res.body}';
-        }
-      } else {
-        final res = await http.delete(
-          Uri.parse('$baseUrl${getObjectKeyForHash(hash)}'),
-        );
-        if (res.statusCode != 201 && res.statusCode != 204 && res.statusCode != 404) {
-          throw 'HTTP ${res.statusCode}: ${res.body}';
-        }
-      }
+    } else if (smallFile) {
       availableHashes.remove(hash);
-//    }
+    }
   }
 }
