@@ -8,6 +8,8 @@ import 'local.dart';
 import 'pixeldrain.dart';
 import 's3.dart';
 import 'sia.dart';
+import 'ipfs.dart';
+import 'webdav.dart';
 
 Map<String, ObjectStore> createStoresFromConfig(
   Map<String, dynamic> config, {
@@ -19,6 +21,8 @@ Map<String, ObjectStore> createStoresFromConfig(
   final pixeldrainConfig = config['store']?['pixeldrain'];
   final arweaveConfig = config['store']?['arweave'];
   final estuaryConfig = config['store']?['estuary'];
+  final ipfsStorageConfig = config['store']?['ipfsstorage'];
+  final webdavStorageConfig = config['store']?['webdavstorage'];
 
   final stores = <String, ObjectStore>{};
 
@@ -36,6 +40,23 @@ Map<String, ObjectStore> createStoresFromConfig(
 
   if (pixeldrainConfig != null) {
     stores['pixeldrain'] = PixeldrainObjectStore(pixeldrainConfig['apiKey']);
+  }
+
+  if (ipfsStorageConfig != null) {
+    stores['ipfsstorage'] = IpfsObjectStore(
+      ipfsStorageConfig['gatewayUrl'],
+      ipfsStorageConfig['apiUrl'],
+      ipfsStorageConfig['token'],
+    );
+  }
+
+  if (webdavStorageConfig != null) {
+    stores['webdavstorage'] = WebDAVObjectStore(
+      webdavStorageConfig['baseUrl'],
+      webdavStorageConfig['username'],
+      webdavStorageConfig['password'],
+      webdavStorageConfig['publicUrl'],
+    );
   }
 
   /* if (arweaveConfig != null) {
