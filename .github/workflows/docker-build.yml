@@ -1,10 +1,9 @@
-name: Docker Build and Push
+name: Docker Build
 
 on:
-  release:
-
-env:
-  APP_VERSION: 0.10.0
+  push:
+    branches:
+      - "main"
 
 jobs:
   docker:
@@ -47,11 +46,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build Container
         run: |
           docker buildx build \
-            --push \
             --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/lukehmcc/s5:latest \
-            --tag ghcr.io/lukehmcc/s5:${{ env.APP_VERSION }} \
             .
