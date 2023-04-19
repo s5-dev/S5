@@ -21,8 +21,8 @@ Map<String, ObjectStore> createStoresFromConfig(
   final pixeldrainConfig = config['store']?['pixeldrain'];
   final arweaveConfig = config['store']?['arweave'];
   final estuaryConfig = config['store']?['estuary'];
-  final ipfsStorageConfig = config['store']?['ipfsstorage'];
-  final webdavStorageConfig = config['store']?['webdavstorage'];
+  final ipfsConfig = config['store']?['ipfs'];
+  final webdavConfig = config['store']?['webdav'];
 
   final stores = <String, ObjectStore>{};
 
@@ -42,20 +42,20 @@ Map<String, ObjectStore> createStoresFromConfig(
     stores['pixeldrain'] = PixeldrainObjectStore(pixeldrainConfig['apiKey']);
   }
 
-  if (ipfsStorageConfig != null) {
-    stores['ipfsstorage'] = IpfsObjectStore(
-      ipfsStorageConfig['gatewayUrl'],
-      ipfsStorageConfig['apiUrl'],
-      ipfsStorageConfig['token'],
+  if (ipfsConfig != null) {
+    stores['ipfs'] = IpfsObjectStore(
+      ipfsConfig['gatewayUrl'],
+      ipfsConfig['apiUrl'],
+      ipfsConfig['token'],
     );
   }
 
-  if (webdavStorageConfig != null) {
-    stores['webdavstorage'] = WebDAVObjectStore(
-      webdavStorageConfig['baseUrl'],
-      webdavStorageConfig['username'],
-      webdavStorageConfig['password'],
-      webdavStorageConfig['publicUrl'],
+  if (webdavConfig != null) {
+    stores['webdav'] = WebDAVObjectStore(
+      webdavConfig['baseUrl'],
+      webdavConfig['username'],
+      webdavConfig['password'],
+      webdavConfig['publicUrl'],
     );
   }
 
