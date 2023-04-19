@@ -24,18 +24,17 @@ jobs:
           profile: minimal
           toolchain: stable
 
-      - name: Build
-        working-directory: rust/
-        run: cargo build --release
-
-      - name: Move rust build
-        run: |
-          cp rust/target/release/librust.so .
-
       - name: Set up Dart SDK 
         uses: dart-lang/setup-dart@v1
         with:
           dart-version: stable
+
+      - name: Build Rust
+        working-directory: rust/
+        run: cargo build --release
+
+      - name: Move Rust Build
+        run: cp rust/target/release/librust.so .
       
       - name: Compile Dart
         run: dart compile exe bin/s5_server.dart
