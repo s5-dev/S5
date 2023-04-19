@@ -28,6 +28,7 @@ class Peer {
     Function callback, {
     dynamic onDone,
     Function? onError,
+    required Logger logger,
   }) {
     final sub = _socket.listen(
       (event) async {
@@ -44,9 +45,7 @@ class Peer {
           try {
             await callback(event.sublist(pos + 4, pos + 4 + length));
           } catch (e, st) {
-            // TODO Add proper error logging
-            print('$id: $e');
-            print(st);
+            logger.catched(e, st, id.toBase58());
           }
 
           pos += length + 4;
@@ -389,6 +388,7 @@ class P2PService {
       onError: (e) {
         logger.warn('${peer.id}: $e');
       },
+      logger: logger,
     );
     peer.sendMessage(initialAuthPayloadPacker.takeBytes());
 

@@ -48,8 +48,8 @@ class ConsoleLogger extends Logger {
   }
 
   @override
-  void catched(e, st) {
-    warn(prefix + e.toString());
+  void catched(e, st, [context]) {
+    warn(prefix + e.toString() + (context == null ? '' : ' [$context]'));
     verbose(prefix + st.toString());
   }
 }

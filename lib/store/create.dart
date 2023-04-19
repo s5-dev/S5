@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:http/http.dart';
 import 'package:minio/minio.dart';
 
+import 'package:s5_server/node.dart';
+
 import 'base.dart';
 import 'local.dart';
 import 'pixeldrain.dart';
@@ -12,6 +14,7 @@ import 'sia.dart';
 Map<String, ObjectStore> createStoresFromConfig(
   Map<String, dynamic> config, {
   required Client httpClient,
+  required S5Node node,
 }) {
   final s3Config = config['store']?['s3'];
   final localConfig = config['store']?['local'];
@@ -31,6 +34,10 @@ Map<String, ObjectStore> createStoresFromConfig(
       ),
       s3Config['bucket'],
       cdnUrls: s3Config['cdnUrls']?.cast<String>() ?? <String>[],
+      uploadRequestChunkSize:
+          s3Config['uploadRequestChunkSize'] ?? 256 * 1024 * 1024,
+      downloadUrlExpiryInSeconds:
+          s3Config['downloadUrlExpiryInSeconds'] ?? 86400,
     );
   }
 

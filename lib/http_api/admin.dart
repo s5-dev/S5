@@ -36,14 +36,14 @@ class AdminAPI {
     app.get('/s5/admin/accounts', (req, res) async {
       checkAuth(req);
       return {
-        'accounts': await node.accounts!.getAllUsers(),
+        'accounts': await node.accounts!.getAllAccounts(),
       };
     });
 
     app.post('/s5/admin/accounts', (req, res) async {
       checkAuth(req);
       final id =
-          await node.accounts!.createUser(req.uri.queryParameters['email']!);
+          await node.accounts!.createAccount(req.uri.queryParameters['email']!);
       return {'id': id};
     });
 
@@ -52,7 +52,7 @@ class AdminAPI {
       final accountId = int.parse(req.uri.queryParameters['id']!);
 
       return {
-        'auth_token': await node.accounts!.createAuthTokenForUser(
+        'auth_token': await node.accounts!.createAuthTokenForAccount(
           accountId,
           'Created using the Admin API',
         ),

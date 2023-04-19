@@ -6,18 +6,18 @@ import 'package:base_codecs/base_codecs.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
 
-import 'package:s5_server/accounts/user.dart';
+import 'package:s5_server/accounts/account.dart';
 import 'package:s5_server/logger/base.dart';
 import 'package:s5_server/service/sql.dart';
 import 'package:messagepack/messagepack.dart';
 
 class AuthResponse {
-  final User? user;
+  final Account? account;
   final bool denied;
   final String? error;
 
   AuthResponse({
-    required this.user,
+    required this.account,
     required this.denied,
     required this.error,
   });
@@ -47,12 +47,48 @@ class AccountsService {
     's5/blob/redirect',
   ];
 
+  final tiers = <int, Map>{};
+
+  final defaultTiers = [
+    {
+      "id": 0,
+      "name": "anonymous",
+      "uploadBandwidth": 5242880,
+      "storageLimit": 0,
+    },
+    {
+      "id": 1,
+      "name": "free",
+      "uploadBandwidth": 10485760,
+      "storageLimit": 10000000000,
+      // "scopes": ["test"],
+    },
+    {
+      "id": 2,
+      "name": "plus",
+      "uploadBandwidth": 20971520,
+      "storageLimit": 100000000000
+    },
+    {
+      "id": 3,
+      "name": "pro",
+      "uploadBandwidth": 41943040,
+      "storageLimit": 1000000000000
+    },
+    {
+      "id": 4,
+      "name": "extreme",
+      "uploadBandwidth": 83886080,
+      "storageLimit": 10000000000000
+    }
+  ];
+
   late final List<String> authTokensForAccountRegistration;
 
   Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
     if (alwaysAllowedScopes.contains(scope)) {
       return AuthResponse(
-        user: null,
+        account: null,
         denied: false,
         error: null,
       );
@@ -81,7 +117,7 @@ class AccountsService {
 
       if (token == null) {
         return AuthResponse(
-          user: null,
+          account: null,
           denied: true,
           error: 'No auth token found',
         );
@@ -90,38 +126,38 @@ class AccountsService {
       if (scope == 'account/register') {
         if (authTokensForAccountRegistration.contains(token)) {
           return AuthResponse(
-            user: null,
+            account: null,
             denied: false,
             error: null,
           );
         } else {
           return AuthResponse(
-            user: null,
+            account: null,
             denied: true,
             error: 'Invalid auth token',
           );
         }
       }
 
-      final user = await getUserByAuthToken(token);
+      final account = await getAccountByAuthToken(token);
 
-      if (user == null) {
+      if (account == null) {
         return AuthResponse(
-          user: null,
+          account: null,
           denied: true,
           error: 'Invalid auth token',
         );
       }
 
       return AuthResponse(
-        // TODO Maybe only userId here!
-        user: user,
+        // TODO Maybe only accountId here!
+        account: account,
         denied: false,
         error: null,
       );
     } catch (_) {
       return AuthResponse(
-        user: null,
+        account: null,
         denied: true,
         error: 'Internal Server Error',
       );
@@ -135,12 +171,31 @@ class AccountsService {
     authTokensForAccountRegistration =
         config['authTokensForAccountRegistration']?.cast<String>() ?? [];
 
+    for (final tier in (config['tiers'] ?? defaultTiers)) {
+      if (tier['id'] == null) {
+        logger.error('accounts config: tier has no id');
+        continue;
+      }
+      final int id = tier['id']!;
+      if (tier['storageLimit'] == null) {
+        logger.error('accounts config: tier $id has no storageLimit');
+        continue;
+      }
+      tiers[id] = {
+        "id": id,
+        "name": tier['name'] ?? 'Tier $id',
+        "uploadBandwidth": tier['uploadBandwidth'] ?? 100000000,
+        "storageLimit": tier['storageLimit'],
+        "scopes": tier['scopes'] ?? [],
+      };
+    }
+
     sql = SQLService(config, logger);
 
     await sql.init();
 
-    if ((await sql.db.query('User', limit: 1)).isEmpty) {
-      await createUser(null);
+    if ((await sql.db.query('Account', limit: 1)).isEmpty) {
+      await createAccount(null);
     }
 
     final registerChallenges = <String, Uint8List>{};
@@ -208,11 +263,11 @@ class AccountsService {
       final email = data['email'];
       // TODO Validate email
 
-      final id = await createUser(email);
+      final id = await createAccount(email);
 
-      await linkPublicKeyToUser(id, pubKey);
+      await linkPublicKeyToAccount(id, pubKey);
 
-      final token = await createAuthTokenForUser(id, data['label']!);
+      final token = await createAuthTokenForAccount(id, data['label']!);
 
       setSetCookieHeader(res, token, req.requestedUri.authority);
     });
@@ -285,85 +340,50 @@ class AccountsService {
         throw 'This public key is not registered on this portal';
       }
 
-      final token = await createAuthTokenForUser(
-        dbRes.first['user_id'] as int,
+      final token = await createAuthTokenForAccount(
+        dbRes.first['account_id'] as int,
         data['label']!,
       );
 
       setSetCookieHeader(res, token, req.requestedUri.authority);
     });
 
-    // TODO Move tiers to config
-    final tiers = [
-      {
-        "id": 0,
-        "name": "anonymous",
-        "uploadBandwidth": 5242880,
-        "storageLimit": 0,
-      },
-      {
-        "id": 1,
-        "name": "free",
-        "uploadBandwidth": 10485760,
-        "storageLimit": 10000000000,
-        "scopes": ["test"],
-      },
-      {
-        "id": 2,
-        "name": "plus",
-        "uploadBandwidth": 20971520,
-        "storageLimit": 100000000000
-      },
-      {
-        "id": 3,
-        "name": "pro",
-        "uploadBandwidth": 41943040,
-        "storageLimit": 1000000000000
-      },
-      {
-        "id": 4,
-        "name": "extreme",
-        "uploadBandwidth": 83886080,
-        "storageLimit": 10000000000000
-      }
-    ];
-
     app.get('/s5/account', (req, res) async {
-      final auth = await checkAuth(req, 'account/api/user');
+      final auth = await checkAuth(req, 'account/api/account');
       if (auth.denied) return res.unauthorized(auth);
 
       return {
-        "email": auth.user!.email,
-        "createdAt": auth.user!.createdAt,
+        "email": auth.account!.email,
+        "createdAt": auth.account!.createdAt,
         "quotaExceeded": false,
         "emailConfirmed": false,
-        "tier": tiers[auth.user!.tier],
+        "tier": tiers[auth.account!.tier],
       };
     });
 
     app.get('/s5/account/stats', (req, res) async {
-      final auth = await checkAuth(req, 'account/api/user');
+      final auth = await checkAuth(req, 'account/api/account/stats');
       if (auth.denied) return res.unauthorized(auth);
 
-      final stats = await getStatsForUser(auth.user!.id);
+      final stats = await getStatsForAccount(auth.account!.id);
 
       return {
-        "email": auth.user!.email,
-        "createdAt": auth.user!.createdAt,
+        "email": auth.account!.email,
+        "createdAt": auth.account!.createdAt,
         "quotaExceeded": false,
         "emailConfirmed": false,
-        "tier": tiers[auth.user!.tier],
+        "tier": tiers[auth.account!.tier],
         "stats": stats,
       };
     });
 
     app.get('/s5/account/pins.bin', (req, res) async {
-      final auth = await checkAuth(req, 'account/api/user/pins');
+      final auth = await checkAuth(req, 'account/api/account/pins');
       if (auth.denied) return res.unauthorized(auth);
 
-      final cursor = await getObjectPinsCursorForUser(user: auth.user!);
-      final pins = await getObjectPinsForUser(
-        user: auth.user!,
+      final cursor = await getObjectPinsCursorForAccount(account: auth.account!);
+      final pins = await getObjectPinsForAccount(
+        account: auth.account!,
         afterCursor: int.parse(
           req.uri.queryParameters['cursor'] ?? '0',
         ),
@@ -384,12 +404,12 @@ class AccountsService {
     });
   }
 
-  Future<Map> getStatsForUser(int id) async {
+  Future<Map> getStatsForAccount(int id) async {
     final res = await sql.db.rawQuery('''SELECT SUM(size) as used_storage
 FROM Pin
 INNER JOIN Object 
     ON Object.hash = Pin.object_hash
-WHERE user_id = ?''', [id]);
+WHERE account_id = ?''', [id]);
 
     return {
       "total": {
@@ -398,14 +418,14 @@ WHERE user_id = ?''', [id]);
     };
   }
 
-  Future<int> getObjectPinsCursorForUser({
-    required User user,
+  Future<int> getObjectPinsCursorForAccount({
+    required Account account,
   }) async {
     final cursorRes = await sql.db.query(
       'Pin',
       columns: ['created_at'],
-      where: 'user_id = ?',
-      whereArgs: [user.id],
+      where: 'account_id = ?',
+      whereArgs: [account.id],
       orderBy: 'created_at DESC',
       limit: 1,
     );
@@ -417,22 +437,22 @@ WHERE user_id = ?''', [id]);
     return cursorRes.first['created_at'] as int;
   }
 
-  Future<List<Multihash>> getObjectPinsForUser({
-    required User user,
+  Future<List<Multihash>> getObjectPinsForAccount({
+    required Account account,
     int afterCursor = 0,
   }) async {
     final res = await sql.db.rawQuery(
       '''SELECT object_hash
 FROM Pin
-WHERE user_id = ? AND created_at >= ?''',
-      [user.id, afterCursor],
+WHERE account_id = ? AND created_at >= ?''',
+      [account.id, afterCursor],
     );
 
     return res.map((e) => Multihash(e['object_hash'] as Uint8List)).toList();
   }
 
-  Future<void> addObjectPinToUser({
-    required User user,
+  Future<void> addObjectPinToAccount({
+    required Account account,
     required Multihash hash,
     required int size,
   }) async {
@@ -452,27 +472,27 @@ WHERE user_id = ? AND created_at >= ?''',
     final res = await sql.db.rawQuery(
       '''SELECT id
 FROM Pin
-WHERE user_id = ? AND object_hash = ?''',
-      [user.id, hash.fullBytes],
+WHERE account_id = ? AND object_hash = ?''',
+      [account.id, hash.fullBytes],
     );
     if (res.isEmpty) {
       await sql.db.insert('Pin', {
         'created_at': DateTime.now().millisecondsSinceEpoch,
         'object_hash': hash.fullBytes,
-        'user_id': user.id,
+        'account_id': account.id,
       });
     }
   }
 
-  /// returns true if no user pins the file (so it should be deleted)
+  /// returns true if no account pins the file (so it should be deleted)
   Future<bool> deleteObjectPin({
-    required User user,
+    required Account account,
     required Multihash hash,
   }) async {
     await sql.db.delete(
       'Pin',
-      where: 'user_id = ? AND object_hash = ?',
-      whereArgs: [user.id, hash.fullBytes],
+      where: 'account_id = ? AND object_hash = ?',
+      whereArgs: [account.id, hash.fullBytes],
     );
 
     final res = await sql.db.rawQuery(
@@ -491,47 +511,47 @@ WHERE object_hash = ?''',
     );
   }
 
-  Future<int> createUser(String? email) {
-    return sql.db.insert('User', {
+  Future<int> createAccount(String? email) {
+    return sql.db.insert('Account', {
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'email': email,
       'tier': 1,
     });
   }
 
-  Future<User> getUserById(int id) async {
+  Future<Account> getAccountById(int id) async {
     final res = await sql.db.query(
-      'User',
+      'Account',
       where: 'id = ?',
       whereArgs: [id],
     );
-    final user = res.first;
-    return User(
+    final account = res.first;
+    return Account(
       id: id,
-      createdAt: user['created_at'] as int,
-      email: user['email'] as String?,
+      createdAt: account['created_at'] as int,
+      email: account['email'] as String?,
     );
   }
 
-  Future<List<User>> getAllUsers() async {
+  Future<List<Account>> getAllAccounts() async {
     final res = await sql.db.query(
-      'User',
+      'Account',
     );
     return res
-        .map<User>((user) => User(
-              id: user['id'] as int,
-              createdAt: user['created_at'] as int,
-              email: user['email'] as String?,
+        .map<Account>((account) => Account(
+              id: account['id'] as int,
+              createdAt: account['created_at'] as int,
+              email: account['email'] as String?,
             ))
         .toList();
   }
 
-  Future<User?> getUserByAuthToken(String token) async {
+  Future<Account?> getAccountByAuthToken(String token) async {
     // TODO Cache responses in-memory for 60 seconds
     final res = await sql.db.rawQuery('''SELECT *
-FROM User
+FROM Account
 WHERE ID = (
-    SELECT user_id
+    SELECT account_id
     FROM AuthToken
 	WHERE token = ?
 );''', [token]);
@@ -539,30 +559,30 @@ WHERE ID = (
       return null;
     }
 
-    final user = res.first;
-    return User(
-      id: user['id'] as int,
-      createdAt: user['created_at'] as int,
-      email: user['email'] as String?,
+    final account = res.first;
+    return Account(
+      id: account['id'] as int,
+      createdAt: account['created_at'] as int,
+      email: account['email'] as String?,
     );
   }
 
-  Future<void> linkPublicKeyToUser(int userId, Uint8List publicKey) {
+  Future<void> linkPublicKeyToAccount(int accountId, Uint8List publicKey) {
     return sql.db.insert('PublicKey', {
       'public_key': publicKey,
-      'user_id': userId,
+      'account_id': accountId,
       'created_at': DateTime.now().millisecondsSinceEpoch,
     });
   }
 
-  Future<String> createAuthTokenForUser(int userId, String label) async {
+  Future<String> createAuthTokenForAccount(int accountId, String label) async {
     final token = crypto.generateRandomBytes(32);
 
     final authToken = 'S5A' + base58BitcoinEncode(token);
 
     await sql.db.insert('AuthToken', {
       'token': authToken,
-      'user_id': userId,
+      'account_id': accountId,
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'label': label,
     });
