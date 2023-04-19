@@ -32,12 +32,12 @@ jobs:
         run: |
           cp rust/target/release/librust.so .
 
-      - name: Set up Dart SDK
-        uses: dart/setup-dart@v1
+      - name: Set up Dart SDK 
+        uses: dart-lang/setup-dart@v1
         with:
           dart-version: stable
-
-      - name: Build
+      
+      - name: Compile Dart
         run: dart compile exe bin/s5_server.dart
       
       - name: Set up Docker Buildx
