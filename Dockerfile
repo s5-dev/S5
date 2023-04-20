@@ -7,9 +7,12 @@ RUN wget -qO- https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dear
 RUN echo 'deb [signed-by=/usr/share/keyrings/dart.gpg arch=amd64] https://storage.googleapis.com/download.dartlang.org/linux/debian \ 
     stable main' | tee /etc/apt/sources.list.d/dart_stable.list
 RUN apt-get update && apt-get install dart
+ENV PATH="/usr/lib/dart/bin:$PATH"
+RUN echo 'export PATH="/usr/lib/dart/bin:$PATH"' >> ~/.profile
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH=$PATH:/root/.cargo/bin:/usr/lib/dart/bin
+ENV PATH="/root/.cargo/bin:$PATH"
+RUN echo 'export PATH="/root/.cargo/bin:$PATH"' >> ~/.profile
 
 WORKDIR /app
 
