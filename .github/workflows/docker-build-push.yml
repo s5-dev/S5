@@ -40,3 +40,10 @@ jobs:
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest \
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
             .
+
+      - name: Test Build
+        if: github.event_name != 'release'
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            .
