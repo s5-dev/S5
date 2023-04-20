@@ -6,3 +6,8 @@
 build/
 
 rust/target/
+
+data/
+configs/
+example/
+librust.so
