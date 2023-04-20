@@ -1,7 +1,7 @@
 FROM debian:latest
 
 RUN apt-get update && apt-get install ca-certificates libsqlite3-dev zip git llvm curl gnupg \
-build-essential pkg-config libssl-dev libclang-dev -y
+build-essential pkg-config libssl-dev libclang-dev apt-transport-https -y
 
 RUN curl -sSL https://dl.google.com/linux/linux_signing_key.pub | apt-key add -
 RUN curl -sSL https://storage.googleapis.com/download.dartlang.org/linux/debian/dart_stable.list \
