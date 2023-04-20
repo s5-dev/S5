@@ -26,7 +26,7 @@ class IPFSObjectStore extends ObjectStore {
   Future<void> init() async {
     authHeaders = authorizationHeader == null
         ? {}
-        : {'Authorization': authorizationHeader!}; 
+        : {'Authorization': authorizationHeader!};
 
     final mkdirRes = await httpClient.post(
       _getApiUri('/files/mkdir?arg=/s5/blob&parents=true&hash=blake3'),
@@ -159,8 +159,10 @@ class IPFSObjectStore extends ObjectStore {
       throw Exception('IPFS upload failed: HTTP ${res.statusCode}: $body');
     }
 
-    final statRes = await httpClient
-        .post(_getApiUri('/files/stat?arg=${getObjectPathForHash(hash)}'));
+    final statRes = await httpClient.post(
+      _getApiUri('/files/stat?arg=${getObjectPathForHash(hash)}'),
+      headers: authHeaders,
+    );
     statRes.expectStatusCode(200);
     final statData = jsonDecode(statRes.body);
     availableHashes[hash] = statData['Hash'];
@@ -191,7 +193,9 @@ class IPFSObjectStore extends ObjectStore {
     }
 
     final statRes = await httpClient.post(
-        _getApiUri('/files/stat?arg=${getObjectPathForHash(hash, 'obao')}'));
+      _getApiUri('/files/stat?arg=${getObjectPathForHash(hash, 'obao')}'),
+      headers: authHeaders,
+    );
     statRes.expectStatusCode(200);
     final statData = jsonDecode(statRes.body);
     availableBaoOutboardHashes[hash] = statData['Hash'];
