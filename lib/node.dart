@@ -17,7 +17,7 @@ import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
 
-import 'accounts/user.dart';
+import 'accounts/account.dart';
 import 'constants.dart';
 import 'db/hive_key_value_db.dart';
 import 'download/uri_provider.dart';
@@ -92,7 +92,11 @@ class S5Node {
 
     cachePath = config['cache']['path']!;
 
-    final cacheCleaner = CacheCleaner(Directory(cachePath), logger);
+    final cacheCleaner = CacheCleaner(
+      Directory(cachePath),
+      logger,
+      maxCacheSizeInGB: config['cache']['maxSizeInGB'] ?? 4,
+    );
 
     cacheCleaner.start();
 
@@ -101,6 +105,7 @@ class S5Node {
     final stores = createStoresFromConfig(
       config,
       httpClient: httpClient,
+      node: this,
     );
 
     if (stores.isEmpty) {
@@ -351,8 +356,8 @@ class S5Node {
 
   Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
     if (accounts == null) {
-      // TODO Return "default user"
-      return AuthResponse(user: null, denied: false, error: null);
+      // TODO Return "default account"
+      return AuthResponse(account: null, denied: false, error: null);
     }
     return accounts!.checkAuth(req, scope);
   }
@@ -418,6 +423,8 @@ class S5Node {
 
     p.packListLength(tryFiles?.length ?? 0);
 
+    tryFiles?.sort();
+
     for (final path in tryFiles ?? []) {
       p.packString(path);
     }
@@ -447,7 +454,11 @@ class S5Node {
     }
     await Future.wait(futures);
 
-    for (final path in paths.keys) {
+    final pathKeys = paths.keys.toList();
+
+    pathKeys.sort();
+
+    for (final path in pathKeys) {
       final bytes = paths[path]!;
       p.packListLength(3);
       p.packString(path);
@@ -480,11 +491,11 @@ class S5Node {
     await store?.delete(hash);
   }
 
-  Future<void> pinCID(CID cid, {User? user}) async {
+  Future<void> pinCID(CID cid, {Account? account}) async {
     if (await store!.contains(cid.hash)) {
-      if (user != null) {
-        await accounts!.addObjectPinToUser(
-          user: user,
+      if (account != null) {
+        await accounts!.addObjectPinToAccount(
+          account: account,
           hash: cid.hash,
           size: 0,
         );
@@ -516,9 +527,9 @@ class S5Node {
       throw 'Hash mismatch (${cid.hash} != ${newCID.hash})';
     }
 
-    if (user != null) {
-      await accounts!.addObjectPinToUser(
-        user: user,
+    if (account != null) {
+      await accounts!.addObjectPinToAccount(
+        account: account,
         hash: cid.hash,
         size: cacheFile.lengthSync(),
       );

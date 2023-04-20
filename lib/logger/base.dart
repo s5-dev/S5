@@ -3,5 +3,5 @@ abstract class Logger {
   void verbose(String s);
   void warn(String s);
   void error(String s);
-  void catched(dynamic e, dynamic st);
+  void catched(dynamic e, dynamic st, [String? context]);
 }

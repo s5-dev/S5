@@ -36,10 +36,15 @@ class S3ObjectStore extends ObjectStore {
   @override
   final uploadsSupported = true;
 
+  final int uploadRequestChunkSize;
+  final int downloadUrlExpiryInSeconds;
+
   S3ObjectStore(
     this.minio,
     this.bucket, {
     required this.cdnUrls,
+    required this.uploadRequestChunkSize,
+    required this.downloadUrlExpiryInSeconds,
   }) {
     minio.putBucketCors(
       bucket,
@@ -116,7 +121,7 @@ class S3ObjectStore extends ObjectStore {
           final fileUrl = await minio.presignedGetObject(
             bucket,
             getObjectKeyForHash(hash),
-            expires: 86400, // TODO Configurable
+            expires: downloadUrlExpiryInSeconds,
           );
           if (type == storageLocationTypeFile) {
             return StorageLocation(
@@ -129,7 +134,7 @@ class S3ObjectStore extends ObjectStore {
           final outboardUrl = await minio.presignedGetObject(
             bucket,
             getObjectKeyForHash(hash, 'obao'),
-            expires: 86400, // TODO Configurable
+            expires: downloadUrlExpiryInSeconds,
           );
           return StorageLocation(
             storageLocationTypeFull,
@@ -166,8 +171,7 @@ class S3ObjectStore extends ObjectStore {
       bucket,
       getObjectKeyForHash(hash),
       data,
-      // TODO Make this configurable
-      chunkSize: 256 * 1024 * 1024,
+      chunkSize: uploadRequestChunkSize,
     );
     if (res.isEmpty) {
       throw 'Upload failed';

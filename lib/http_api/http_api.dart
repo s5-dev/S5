@@ -14,7 +14,7 @@ import 'package:lib5/util.dart';
 import 'package:messagepack/messagepack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
-import 'package:s5_server/accounts/user.dart';
+import 'package:s5_server/accounts/account.dart';
 
 import 'package:s5_server/constants.dart';
 import 'package:s5_server/download/uri_provider.dart';
@@ -57,18 +57,18 @@ class HttpAPIServer {
         // 'protocol':
       },
     );
-    app.get('/accounts/set-auth-cookie/:token', (req, res) {
+    app.get('/s5/account/set-auth-cookie/:token', (req, res) {
       final token = req.params['token'];
       // TODO Ensure token is valid
 
       node.accounts!.setSetCookieHeader(
         res,
         token,
-        req.requestedUri.host /* .split('.').sublist(1).join('.') */,
+        req.requestedUri.host,
       );
 
       res.redirect(
-        Uri.parse('/api/user'),
+        Uri.parse('/s5/account/stats'),
         status: 307,
       );
     });
@@ -147,9 +147,9 @@ class HttpAPIServer {
 
       final cid = await node.uploadRawFile(bytes);
 
-      if (auth.user != null) {
-        await node.accounts!.addObjectPinToUser(
-          user: auth.user!,
+      if (auth.account != null) {
+        await node.accounts!.addObjectPinToAccount(
+          account: auth.account!,
           hash: cid.hash,
           size: bytes.length,
         );
@@ -204,9 +204,9 @@ class HttpAPIServer {
       }
       final cid = CID.decode(req.params['cid']);
 
-      if (auth.user != null) {
+      if (auth.account != null) {
         final shouldDelete = await node.accounts!.deleteObjectPin(
-          user: auth.user!,
+          account: auth.account!,
           hash: cid.hash,
         );
         if (shouldDelete) {
@@ -228,7 +228,7 @@ class HttpAPIServer {
 
       await node.pinCID(
         cid,
-        user: auth.user,
+        account: auth.account,
       );
     });
 
@@ -303,9 +303,9 @@ class HttpAPIServer {
           throw 'Invalid hash found';
         }
 
-        if (tus.user != null) {
-          await node.accounts!.addObjectPinToUser(
-            user: tus.user!,
+        if (tus.account != null) {
+          await node.accounts!.addObjectPinToAccount(
+            account: tus.account!,
             hash: tus.expectedHash,
             size: tus.totalLength,
           );
@@ -359,7 +359,7 @@ class HttpAPIServer {
         totalLength: uploadLength,
         expectedHash: mhash,
         cacheFile: cacheFile,
-        user: auth.user,
+        account: auth.account,
       );
 
       final location =
@@ -416,9 +416,9 @@ class HttpAPIServer {
         cacheFile,
       );
 
-      if (auth.user != null) {
-        await node.accounts!.addObjectPinToUser(
-          user: auth.user!,
+      if (auth.account != null) {
+        await node.accounts!.addObjectPinToAccount(
+          account: auth.account!,
           hash: cid.hash,
           size: cacheFile.lengthSync(),
         );
@@ -445,9 +445,9 @@ class HttpAPIServer {
         file,
       );
 
-      if (auth.user != null) {
-        await node.accounts!.addObjectPinToUser(
-          user: auth.user!,
+      if (auth.account != null) {
+        await node.accounts!.addObjectPinToAccount(
+          account: auth.account!,
           hash: cid.hash,
           size: file.lengthSync(),
         );
@@ -1037,12 +1037,12 @@ class TusUploadSession {
   final Multihash expectedHash;
   final int totalLength;
   final File cacheFile;
-  final User? user;
+  final Account? account;
 
   TusUploadSession({
     required this.totalLength,
     required this.expectedHash,
     required this.cacheFile,
-    this.user,
+    this.account,
   });
 }

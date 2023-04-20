@@ -37,13 +37,18 @@ class PixeldrainObjectStore extends ObjectStore {
     );
     final files = jsonDecode(res.body)['files'];
     for (final file in files) {
-      final String name = file['name'];
-      final String id = file['id'];
-      if (name.endsWith('.obao')) {
-        availableBaoOutboardHashes[
-            Multihash.fromBase64Url(name.split('.')[0])] = id;
-      } else {
-        availableHashes[Multihash.fromBase64Url(name)] = id;
+      try {
+        final String name = file['name'];
+        final String id = file['id'];
+        if (name.endsWith('.obao')) {
+          availableBaoOutboardHashes[
+              Multihash.fromBase64Url(name.split('.')[0])] = id;
+        } else {
+          availableHashes[Multihash.fromBase64Url(name)] = id;
+        }
+      } catch (e, st) {
+        // TODO Proper logging
+        print(e);
       }
     }
   }
