@@ -1,6 +1,6 @@
 FROM debian:latest
 
-RUN apt-get update && apt-get install ca-certificates libsqlite3-dev -y
+RUN apt-get update && apt-get install ca-certificates libsqlite3-dev zip -y
 
 RUN apt-get install curl unzip -y \
   && curl --silent "https://get.sdkman.io" | bash \
