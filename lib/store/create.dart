@@ -50,10 +50,10 @@ Map<String, ObjectStore> createStoresFromConfig(
   }
 
   if (ipfsConfig != null) {
-    stores['ipfs'] = IpfsObjectStore(
+    stores['ipfs'] = IPFSObjectStore(
       ipfsConfig['gatewayUrl'],
       ipfsConfig['apiUrl'],
-      ipfsConfig['token'],
+      ipfsConfig['apiAuthorizationHeader'],
     );
   }
 
