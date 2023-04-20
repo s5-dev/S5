@@ -1,11 +1,15 @@
 name: Docker Build and Push
 
 on:
+  push:
+    branches:
+      - main
   release:
+    types: [created]
 
 env:
   APP_VERSION: ${{ github.event.release.tag_name.replace('v', '') }}
-
+  DEVELOPER_HANDLE: ${{ github.repository_owner }}
 
 jobs:
   docker:
@@ -17,27 +21,6 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       
-      - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-
-      - name: Set up Dart SDK 
-        uses: dart-lang/setup-dart@v1
-        with:
-          dart-version: stable
-
-      - name: Build Rust
-        working-directory: rust/
-        run: cargo build --release
-
-      - name: Move Rust Build
-        run: cp rust/target/release/librust.so .
-      
-      - name: Compile Dart
-        run: dart compile exe bin/s5_server.dart
-      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
       
@@ -45,14 +28,15 @@ jobs:
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ env.DEVELOPER_HANDLE }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        if: github.event_name == 'release'
         run: |
           docker buildx build \
             --push \
             --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/lukehmcc/s5:latest \
-            --tag ghcr.io/lukehmcc/s5:${{ env.APP_VERSION }} \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
             .
