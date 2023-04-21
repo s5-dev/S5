@@ -55,7 +55,7 @@ class S3ObjectStore extends ObjectStore {
       <AllowedMethod>GET</AllowedMethod>
       <AllowedMethod>HEAD</AllowedMethod>
       <MaxAgeSeconds>86400</MaxAgeSeconds>
-      <AllowedHeader></AllowedHeader>
+      <AllowedHeader>range</AllowedHeader>
    </CORSRule>
 </CORSConfiguration>''',
     );
