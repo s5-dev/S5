@@ -320,7 +320,8 @@ class HttpAPIServer {
           tusUploadSessions.remove(uploadId);
         });
       } else {
-        throw 'Something went wrong, please try again';
+        res.statusCode = 400;
+        return ;
       }
     });
 
