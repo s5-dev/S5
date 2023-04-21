@@ -319,9 +319,6 @@ class HttpAPIServer {
         Future.delayed(Duration(minutes: 10)).then((value) {
           tusUploadSessions.remove(uploadId);
         });
-      } else {
-        res.statusCode = 400;
-        return ;
       }
     });
 
