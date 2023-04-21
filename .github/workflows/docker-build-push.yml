@@ -1,9 +1,9 @@
 name: Docker Build and Push
 
 on:
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
   release:
     types: [created]
 
@@ -30,7 +30,7 @@ jobs:
           registry: ghcr.io
           username: ${{ env.DEVELOPER_HANDLE }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@v1.0
         with:
@@ -42,7 +42,7 @@ jobs:
           sudo systemctl restart docker
 
       - name: Build and push
-        if: github.event_name == 'release'
+        # if: github.event_name == 'release'
         run: |
           docker buildx build \
             --push \
@@ -51,9 +51,10 @@ jobs:
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
             .
 
-      - name: Test Build
-        if: github.event_name != 'release'
-        run: |
-          docker buildx build \
-            --platform linux/arm/v7 \
-            .
+      # Saving this in case we ever want to start doing builds on every commit
+      # - name: Test Build
+      #   if: github.event_name != 'release'
+      #   run: |
+      #     docker buildx build \
+      #       --platform linux/amd64,linux/arm/v7,linux/arm64/v8 \
+      #       .
