@@ -1,11 +1,8 @@
 name: Docker Build and Push
 
 on:
-  push:
-    branches:
-      - main
-  # release:
-  #   types: [created]
+  release:
+    types: [created]
 
 env:
   APP_VERSION: ${{ github.event.release.tag_name }}
