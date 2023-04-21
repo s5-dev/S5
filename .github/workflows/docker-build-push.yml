@@ -30,6 +30,16 @@ jobs:
           registry: ghcr.io
           username: ${{ env.DEVELOPER_HANDLE }}
           password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@v1.0
+        with:
+          swap-size-gb: 10
+      - run: |
+          # Workaround for https://github.com/rust-lang/cargo/issues/8719
+          sudo mkdir -p /var/lib/docker
+          sudo mount -t tmpfs -o size=10G none /var/lib/docker
+          sudo systemctl restart docker
 
       - name: Build and push
         if: github.event_name == 'release'
@@ -45,5 +55,5 @@ jobs:
         if: github.event_name != 'release'
         run: |
           docker buildx build \
-            --platform linux/amd64,linux/arm/v7,linux/arm64/v8 \
+            --platform linux/arm/v7 \
             .
