@@ -11,3 +11,6 @@ data/
 configs/
 example/
 librust.so
+
+# act things
+.env
