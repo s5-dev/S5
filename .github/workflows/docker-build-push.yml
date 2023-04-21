@@ -46,14 +46,14 @@ jobs:
         run: |
           docker buildx build \
             --push \
-            --platform linux/amd64,linux/arm/v7,linux/arm64/v8, \
+            --platform linux/amd64,linux/arm/v7,linux/arm64/v8 \
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest \
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
             .
 
-      # Saving this in case we ever want to start doing builds on every commit
+      # # Saving this in case we ever want to start doing builds on every commit
       # - name: Test Build
-      #   if: github.event_name != 'release'
+      #   # if: github.event_name != 'release'
       #   run: |
       #     docker buildx build \
       #       --platform linux/amd64,linux/arm/v7,linux/arm64/v8 \
