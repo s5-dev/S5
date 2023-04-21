@@ -141,7 +141,7 @@ class IPFSObjectStore extends ObjectStore {
     }
 
     final uploadUrl = _getApiUri(
-      '/files/write?arg=${getObjectPathForHash(hash)}&create=true&offset=0&raw-leaves=true&hash=blake3',
+      '/add?quieter=true&chunker=size-1048576&raw-leaves=true&hash=blake3&pin=true',
     );
 
     final request = http.MultipartRequest('POST', uploadUrl);
@@ -158,14 +158,14 @@ class IPFSObjectStore extends ObjectStore {
     if (res.statusCode != 200) {
       throw Exception('IPFS upload failed: HTTP ${res.statusCode}: $body');
     }
+    final String cid = jsonDecode(body)['Hash'];
 
-    final statRes = await httpClient.post(
-      _getApiUri('/files/stat?arg=${getObjectPathForHash(hash)}'),
+    final copyRes = await httpClient.post(
+      _getApiUri('/files/cp?arg=/ipfs/$cid&arg=${getObjectPathForHash(hash)}'),
       headers: authHeaders,
     );
-    statRes.expectStatusCode(200);
-    final statData = jsonDecode(statRes.body);
-    availableHashes[hash] = statData['Hash'];
+    copyRes.expectStatusCode(200);
+    availableHashes[hash] = cid;
   }
 
   @override
@@ -175,7 +175,7 @@ class IPFSObjectStore extends ObjectStore {
     }
 
     final uploadUrl = _getApiUri(
-      '/files/write?arg=${getObjectPathForHash(hash, 'obao')}&create=true&offset=0&raw-leaves=true&hash=blake3',
+      '/add?quieter=true&chunker=size-1048576&raw-leaves=true&hash=blake3&pin=true',
     );
 
     final request = http.MultipartRequest('POST', uploadUrl);
@@ -191,19 +191,26 @@ class IPFSObjectStore extends ObjectStore {
     if (res.statusCode != 200) {
       throw Exception('IPFS upload failed: HTTP ${res.statusCode}: $body');
     }
+    final String cid = jsonDecode(body)['Hash'];
 
-    final statRes = await httpClient.post(
-      _getApiUri('/files/stat?arg=${getObjectPathForHash(hash, 'obao')}'),
+    final copyRes = await httpClient.post(
+      _getApiUri(
+          '/files/cp?arg=/ipfs/$cid&arg=${getObjectPathForHash(hash, 'obao')}'),
       headers: authHeaders,
     );
-    statRes.expectStatusCode(200);
-    final statData = jsonDecode(statRes.body);
-    availableBaoOutboardHashes[hash] = statData['Hash'];
+    copyRes.expectStatusCode(200);
+    availableBaoOutboardHashes[hash] = cid;
   }
 
   @override
   Future<void> delete(Multihash hash) async {
     if (availableBaoOutboardHashes.containsKey(hash)) {
+      final unpinRes = await httpClient.post(
+        _getApiUri('/pin/rm?arg=${availableBaoOutboardHashes[hash]!}'),
+        headers: authHeaders,
+      );
+      unpinRes.expectStatusCode(200);
+
       final res = await httpClient.post(
         _getApiUri('/files/rm?arg=${getObjectPathForHash(hash, 'obao')}'),
         headers: authHeaders,
@@ -213,6 +220,12 @@ class IPFSObjectStore extends ObjectStore {
     }
 
     if (availableHashes.containsKey(hash)) {
+      final unpinRes = await httpClient.post(
+        _getApiUri('/pin/rm?arg=${availableHashes[hash]!}'),
+        headers: authHeaders,
+      );
+      unpinRes.expectStatusCode(200);
+
       final res = await httpClient.post(
         _getApiUri('/files/rm?arg=${getObjectPathForHash(hash)}'),
         headers: authHeaders,

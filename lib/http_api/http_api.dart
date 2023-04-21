@@ -198,7 +198,7 @@ class HttpAPIServer {
       final auth = await node.checkAuth(req, 's5/delete');
       if (auth.denied) return res.unauthorized(auth);
 
-      if (node.config['http']?['api']?['delete']?['enabled'] != true) {
+      if (node.config['http']?['api']?['delete']?['enabled'] == false) {
         res.statusCode = HttpStatus.unauthorized;
         return 'Endpoint disabled in config.toml';
       }
