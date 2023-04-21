@@ -64,6 +64,7 @@ jobs:
 
       - name: Create and push manifests
         # if: github.event_name == 'release'
+        # name: Create and push manifests
         run: |
           # Export experimental CLI environment variable
           export DOCKER_CLI_EXPERIMENTAL=enabled
@@ -75,13 +76,14 @@ jobs:
 
           # Create and push manifest for arm-v7 platform
           docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm-v7-${{ env.APP_VERSION }} --amend
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5-arm-v7-${{ env.APP_VERSION }} --amend
           docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }}
 
           # Create and push manifest for arm64-v8 platform
           docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ env.APP_VERSION }} --amend
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5-arm64-v8-${{ env.APP_VERSION }} --amend
           docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }}
+
 
       # # Saving this in case we ever want to start
       # - name: Test Build
