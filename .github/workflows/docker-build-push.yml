@@ -1,16 +1,16 @@
 name: Docker Build and Push
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  release:
-    types: [created]
+  push:
+    branches:
+      - main
+  # release:
+  #   types: [created]
 
 env:
-  APP_VERSION: ${{ replace(github.event.release.tag_name, 'v', '') }}
+  APP_VERSION: ${{ github.event.release.tag_name.substring(1) }}
   DEVELOPER_HANDLE: ${{ github.repository_owner }}
-  LOCAL_BUILD: false
+  LOCAL_BUILD: true
 
 jobs:
   # build-and-push-amd64:
