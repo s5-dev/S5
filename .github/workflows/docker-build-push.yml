@@ -1,44 +1,44 @@
 name: Docker Build and Push
 
 on:
-  push:
-    branches:
-      - main
-  # release:
-  #   types: [created]
+  # push:
+  #   branches:
+  #     - main
+  release:
+    types: [created]
 
 env:
-  APP_VERSION: ${{ github.event.release.tag_name.substring(1) }}
+  APP_VERSION: ${{ github.event.release.tag_name }}
   DEVELOPER_HANDLE: ${{ github.repository_owner }}
-  LOCAL_BUILD: true
+  LOCAL_BUILD: false
 
 jobs:
-  # build-and-push-amd64:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v2
+  build-and-push-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
 
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
       
-  #     - name: Login to GitHub Container Registry
-  #       if: env.LOCAL_BUILD != 'true'
-  #       uses: docker/login-action@v1
-  #       with:
-  #         registry: ghcr.io
-  #         username: ${{ env.DEVELOPER_HANDLE }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        if: env.LOCAL_BUILD != 'true'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ env.DEVELOPER_HANDLE }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  #     - name: Build and push for amd64 platform
-  #       run: |
-  #         docker buildx build \
-  #           --push \
-  #           --platform linux/amd64 \
-  #           --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.APP_VERSION }} \
-  #           .
+      - name: Build and push for amd64 platform
+        run: |
+          docker buildx build \
+            --push \
+            --platform linux/amd64 \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.APP_VERSION }} \
+            .
 
-  build-and-push-all:
+  build-and-push-armv7:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -61,11 +61,11 @@ jobs:
       - name: Set Swap Space
         uses: pierotofy/set-swap-space@v1.0
         with:
-          swap-size-gb: 5
+          swap-size-gb: 10
       - run: |
           # Workaround for https://github.com/rust-lang/cargo/issues/8719
           sudo mkdir -p /var/lib/docker
-          sudo mount -t tmpfs -o size=5G none /var/lib/docker
+          sudo mount -t tmpfs -o size=10G none /var/lib/docker
           sudo systemctl restart docker
 
       - name: Build and push for all platforms
@@ -77,30 +77,58 @@ jobs:
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest \
             .
 
-  # build-and-push-arm64v8:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v2
+  build-and-push-arm64v8:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
 
-  #     - name: Set up QEMU
-  #       uses: docker/setup-qemu-action@v1
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
       
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
       
-  #     - name: Login to GitHub Container Registry
-  #       if: env.LOCAL_BUILD != 'true'
-  #       uses: docker/login-action@v1
-  #       with:
-  #         registry: ghcr.io
-  #         username: ${{ env.DEVELOPER_HANDLE }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        if: env.LOCAL_BUILD != 'true'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ env.DEVELOPER_HANDLE }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  #     - name: Build and push for arm64v8 platform
-  #       run: |
-  #         docker buildx build \
-  #           --push \
-  #           --platform linux/arm64/v8 \
-  #           --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ env.APP_VERSION }} \
-  #           .
+      - name: Build and push for arm64v8 platform
+        run: |
+          docker buildx build \
+            --push \
+            --platform linux/arm64/v8 \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ env.APP_VERSION }} \
+            .
+
+  build-and-push-manifest:
+    needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64v8]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      
+      - name: Login to GitHub Container Registry
+        if: env.LOCAL_BUILD != 'true'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ env.DEVELOPER_HANDLE }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push to registry
+        run: |
+          docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.APP_VERSION }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ env.APP_VERSION }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ env.APP_VERSION }}
+          docker manifest inspect ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }}
+          docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.APP_VERSION }}
+          docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest
