@@ -66,7 +66,7 @@ void main(List<String> arguments) async {
   );
 }
 
-const defaultConfig = '''# ! Documentation: https://docs.s5.ninja/install/config
+const defaultConfig = '''# ! Documentation: https://docs.sfive.net/install/config
 
 name = "my-s5-node"
 
@@ -90,7 +90,7 @@ initial = [
 ''';
 
 const defaultConfigDocker =
-    '''# ! Documentation: https://docs.s5.ninja/install/config
+    '''# ! Documentation: https://docs.sfive.net/install/config
 
 name = "my-s5-node"
 
