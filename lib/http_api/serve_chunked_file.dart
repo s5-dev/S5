@@ -248,7 +248,7 @@ Stream<List<int>> openRead(
               final request =
                   Request('GET', Uri.parse(storageLocation.location.bytesUrl));
 
-              final range = 'bytes=$encStartByte-$totalSize';
+              final range = 'bytes=$encStartByte-${totalSize - 1}';
 
               request.headers['range'] = range;
 
