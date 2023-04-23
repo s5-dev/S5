@@ -8,7 +8,6 @@ on:
     types: [created]
 
 env:
-  APP_VERSION: ${{ github.event.release.tag_name }}
   DEVELOPER_HANDLE: ${{ github.repository_owner }}
   LOCAL_BUILD: false
 
@@ -25,16 +24,10 @@ jobs:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: |
-            ghcr.io/${{ github.repository_owner }}/s5
-          flavor: |
-            latest=${{ startsWith(github.ref, 'refs/tags/') }}
-          tags: type=ref,event=tag
+      - name: Write release version
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
       
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
@@ -49,7 +42,7 @@ jobs:
           docker buildx build \
             --push \
             --platform linux/amd64 \
-            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ steps.meta.outputs.version  }} \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.VERSION  }} \
             .
 
   build-and-push-armv7:
@@ -67,16 +60,10 @@ jobs:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: |
-            ghcr.io/${{ github.repository_owner }}/s5
-          flavor: |
-            latest=${{ startsWith(github.ref, 'refs/tags/') }}
-          tags: type=ref,event=tag
+      - name: Write release version
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
       
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
@@ -101,7 +88,7 @@ jobs:
           docker buildx build \
             --push \
             --platform linux/arm/v7 \
-            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }} \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ env.VERSION }} \
             .
 
   build-and-push-arm64v8:
@@ -119,16 +106,10 @@ jobs:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: |
-            ghcr.io/${{ github.repository_owner }}/s5
-          flavor: |
-            latest=${{ startsWith(github.ref, 'refs/tags/') }}
-          tags: type=ref,event=tag
+      - name: Write release version
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
       
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
@@ -143,11 +124,11 @@ jobs:
           docker buildx build \
             --push \
             --platform linux/arm64/v8 \
-            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ steps.meta.outputs.version }} \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-${{ env.VERSION }} \
             .
 
   build-and-push-manifest:
-    needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64v8]
+    needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -180,10 +161,10 @@ jobs:
 
       - name: Create manifest list and push to registry
         run: |
-          docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ steps.meta.outputs.version }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-${{ steps.meta.outputs.version }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ steps.meta.outputs.version }} \
-          docker manifest inspect ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }}
-          docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }}
+          docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.VERSION }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.VERSION }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-${{ env.VERSION }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ env.VERSION }} \
+          docker manifest inspect ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.VERSION }}
+          docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.VERSION }}
           docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest
