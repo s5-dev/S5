@@ -8,12 +8,26 @@ on:
     types: [created]
 
 env:
-  DEVELOPER_HANDLE: ${{ github.repository_owner }}
   LOCAL_BUILD: false
 
 jobs:
+  get_version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set_version.outputs.version }}
+    steps:
+      - name: Write release version
+        id: set_version
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          VERSION=${TAG#v}
+          echo "VERSION: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_ENV
+          echo "::set-output name=version::$VERSION"
+
   build-and-push-amd64:
     runs-on: ubuntu-latest
+    needs: get_version
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -23,18 +37,13 @@ jobs:
         with:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
-
-      - name: Write release version
-        run: |
-          TAG=${{ github.event.release.tag_name }}
-          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
       
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ env.DEVELOPER_HANDLE }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push for amd64 platform
@@ -42,11 +51,12 @@ jobs:
           docker buildx build \
             --push \
             --platform linux/amd64 \
-            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.VERSION  }} \
+            --tag ghcr.io/${{ github.repository_owner }}/s5:amd64-${{ needs.get_version.outputs.version }} \
             .
 
   build-and-push-armv7:
     runs-on: ubuntu-latest
+    needs: get_version
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -59,18 +69,13 @@ jobs:
         with:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
-
-      - name: Write release version
-        run: |
-          TAG=${{ github.event.release.tag_name }}
-          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
       
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ env.DEVELOPER_HANDLE }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set Swap Space
@@ -88,11 +93,12 @@ jobs:
           docker buildx build \
             --push \
             --platform linux/arm/v7 \
-            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ env.VERSION }} \
+            --tag ghcr.io/${{ github.repository_owner }}/s5:armv7-${{ needs.get_version.outputs.version  }} \
             .
 
   build-and-push-arm64:
     runs-on: ubuntu-latest
+    needs: get_version
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -105,18 +111,13 @@ jobs:
         with:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
-
-      - name: Write release version
-        run: |
-          TAG=${{ github.event.release.tag_name }}
-          echo "VERSION=${TAG#v}" >> $GITHUB_ENV
       
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ env.DEVELOPER_HANDLE }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push for arm64v8 platform
@@ -124,11 +125,11 @@ jobs:
           docker buildx build \
             --push \
             --platform linux/arm64/v8 \
-            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-${{ env.VERSION }} \
+            --tag ghcr.io/${{ github.repository_owner }}/s5:arm64-${{ needs.get_version.outputs.version  }} \
             .
 
   build-and-push-manifest:
-    needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64]
+    needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64, get_version]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -140,31 +141,20 @@ jobs:
           buildkitd-flags: --debug
           driver-opts: image=moby/buildkit:v0.9.1
       
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          images: |
-            ghcr.io/${{ github.repository_owner }}/s5
-          flavor: |
-            latest=${{ startsWith(github.ref, 'refs/tags/') }}
-          tags: type=ref,event=tag
-      
       - name: Login to GitHub Container Registry
         if: env.LOCAL_BUILD != 'true'
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ env.DEVELOPER_HANDLE }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push to registry
         run: |
-          docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.VERSION }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ env.VERSION }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-${{ env.VERSION }} \
-            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ env.VERSION }} \
-          docker manifest inspect ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.VERSION }}
-          docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ env.VERSION }}
-          docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:latest
+          docker manifest create ghcr.io/${{ github.repository_owner }}/s5:${{ needs.get_version.outputs.version  }} \
+            ghcr.io/${{ github.repository_owner }}/s5:amd64-${{ needs.get_version.outputs.version  }} \
+            ghcr.io/${{ github.repository_owner }}/s5:arm64-${{ needs.get_version.outputs.version  }} \
+            ghcr.io/${{ github.repository_owner }}/s5:armv7-${{ needs.get_version.outputs.version  }} \
+          docker manifest inspect ghcr.io/${{ github.repository_owner }}/s5:${{ needs.get_version.outputs.version  }}
+          docker manifest push ghcr.io/${{ github.repository_owner }}/s5:${{ needs.get_version.outputs.version  }}
+          docker manifest push ghcr.io/${{ github.repository_owner }}/s5:latest
