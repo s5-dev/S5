@@ -91,7 +91,7 @@ jobs:
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ env.VERSION }} \
             .
 
-  build-and-push-arm64v8:
+  build-and-push-arm64:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
