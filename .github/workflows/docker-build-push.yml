@@ -96,7 +96,7 @@ jobs:
           sudo mount -t tmpfs -o size=10G none /var/lib/docker
           sudo systemctl restart docker
 
-      - name: Build and push for all platforms
+      - name: Build and push for armv7
         run: |
           docker buildx build \
             --push \
@@ -144,7 +144,7 @@ jobs:
             --push \
             --platform linux/arm64/v8 \
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ steps.meta.outputs.version }} \
-  #           .
+            .
 
   build-and-push-manifest:
     needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64v8]
