@@ -21,27 +21,29 @@ class LocalObjectStore extends ObjectStore {
   final uploadsSupported = true;
 
   LocalObjectStore(this.rootDir, this.httpServerConfig) {
-    final app = Alfred();
-    final re = RegExp(r'^[a-z0-9A-Z]+$');
+    if (httpServerConfig['port'] != null) {
+      final app = Alfred();
+      final re = RegExp(r'^[a-z0-9A-Z]+$');
 
-    app.all('*', cors());
+      app.all('*', cors());
 
-    app.get('/*', (req, res) {
-      for (final s in req.uri.pathSegments) {
-        if (!re.hasMatch(s)) {
-          if (re.hasMatch(s.substring(0, s.length - 4)) &&
-              s.endsWith('.obao')) {
-          } else {
-            throw 'Invalid path';
+      app.get('/*', (req, res) {
+        for (final s in req.uri.pathSegments) {
+          if (!re.hasMatch(s)) {
+            if (s.endsWith('.obao') &&
+                re.hasMatch(s.substring(0, s.length - 5))) {
+            } else {
+              throw 'Invalid path';
+            }
           }
         }
-      }
-      return File(joinAll([rootDir.path] + req.uri.pathSegments));
-    });
-    app.listen(
-      httpServerConfig['port']!,
-      httpServerConfig['bind'] ?? '0.0.0.0',
-    );
+        return File(joinAll([rootDir.path] + req.uri.pathSegments));
+      });
+      app.listen(
+        httpServerConfig['port']!,
+        httpServerConfig['bind'] ?? '0.0.0.0',
+      );
+    }
   }
 
   String getPathForHash(Multihash hash, [String? ext]) {
