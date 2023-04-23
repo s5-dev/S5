@@ -100,55 +100,54 @@ jobs:
         run: |
           docker buildx build \
             --push \
-            --platform linux/arm/v7,linux/amd64,linux/arm64/v8 \
+            --platform linux/arm/v7 \
             --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }} \
             .
 
-  # build-and-push-arm64v8:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v2
+  build-and-push-arm64v8:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
 
-  #     - name: Set up QEMU
-  #       uses: docker/setup-qemu-action@v1
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
       
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v1
-  #       with:
-  #         buildkitd-flags: --debug
-  #         driver-opts: image=moby/buildkit:v0.9.1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+        with:
+          buildkitd-flags: --debug
+          driver-opts: image=moby/buildkit:v0.9.1
 
-  #     - name: Docker meta
-  #       id: meta
-  #       uses: docker/metadata-action@v4
-  #       with:
-  #         github-token: ${{ secrets.GITHUB_TOKEN }}
-  #         images: |
-  #           ghcr.io/${{ github.repository_owner }}/s5
-  #         flavor: |
-  #           latest=${{ startsWith(github.ref, 'refs/tags/') }}
-  #         tags: type=ref,event=tag
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          images: |
+            ghcr.io/${{ github.repository_owner }}/s5
+          flavor: |
+            latest=${{ startsWith(github.ref, 'refs/tags/') }}
+          tags: type=ref,event=tag
       
-  #     - name: Login to GitHub Container Registry
-  #       if: env.LOCAL_BUILD != 'true'
-  #       uses: docker/login-action@v1
-  #       with:
-  #         registry: ghcr.io
-  #         username: ${{ env.DEVELOPER_HANDLE }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GitHub Container Registry
+        if: env.LOCAL_BUILD != 'true'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ env.DEVELOPER_HANDLE }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-  #     - name: Build and push for arm64v8 platform
-  #       run: |
-  #         docker buildx build \
-  #           --push \
-  #           --platform linux/arm64/v8 \
-  #           --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ steps.meta.outputs.version }} \
+      - name: Build and push for arm64v8 platform
+        run: |
+          docker buildx build \
+            --push \
+            --platform linux/arm64/v8 \
+            --tag ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-v8-${{ steps.meta.outputs.version }} \
   #           .
 
   build-and-push-manifest:
-    # needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64v8]
-    needs: [build-and-push-amd64, build-and-push-armv7]
+    needs: [build-and-push-amd64, build-and-push-armv7, build-and-push-arm64v8]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -183,6 +182,7 @@ jobs:
         run: |
           docker manifest create ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }} \
             ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:amd64-${{ steps.meta.outputs.version }} \
+            ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:arm64-${{ steps.meta.outputs.version }} \
             ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:armv7-${{ steps.meta.outputs.version }} \
           docker manifest inspect ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }}
           docker manifest push ghcr.io/${{ env.DEVELOPER_HANDLE }}/s5:${{ steps.meta.outputs.version }}
