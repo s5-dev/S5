@@ -14,3 +14,4 @@ librust.so
 
 # act things
 .env
+config
