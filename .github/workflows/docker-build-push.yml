@@ -156,4 +156,8 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/s5:arm64-${{ needs.get_version.outputs.version  }} \
             ghcr.io/${{ github.repository_owner }}/s5:armv7-${{ needs.get_version.outputs.version  }}
           docker manifest push ghcr.io/${{ github.repository_owner }}/s5:${{ needs.get_version.outputs.version  }}
+          docker manifest create ghcr.io/${{ github.repository_owner }}/s5:latest \
+            ghcr.io/${{ github.repository_owner }}/s5:amd64-${{ needs.get_version.outputs.version  }} \
+            ghcr.io/${{ github.repository_owner }}/s5:arm64-${{ needs.get_version.outputs.version  }} \
+            ghcr.io/${{ github.repository_owner }}/s5:armv7-${{ needs.get_version.outputs.version  }}
           docker manifest push ghcr.io/${{ github.repository_owner }}/s5:latest
