@@ -36,9 +36,10 @@ class SiaObjectStore extends ObjectStore {
     if (res.statusCode != 200) {
       throw 'HTTP ${res.statusCode}: ${res.body}';
     }
-    final keys = json.decode(res.body);
+    final objects = json.decode(res.body);
 
-    for (final key in keys) {
+    for (final object in objects) {
+      final String key = object['name'];
       if (key.endsWith('.obao')) {
         availableBaoOutboardHashes.add(
           Multihash.fromBase64Url(key.substring(3).split('.')[0]),
