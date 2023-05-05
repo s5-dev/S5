@@ -155,7 +155,7 @@ class SiaObjectStore extends ObjectStore {
       req.headers.set(h.key, h.value);
     }
 
-    await req.addStream(data).timeout(const Duration(minutes: 10));
+    await req.addStream(data);
 
     final res = await req.close();
 
