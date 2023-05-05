@@ -312,7 +312,7 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: "4b07c3ad5122654b0ad8ff3238bb0b2493a43fc4"
+      resolved-ref: "302fd60c17bd472b34c78c6fa4e83aea78207103"
       url: "https://github.com/s5-dev/lib5.git"
     source: git
     version: "0.1.0"
