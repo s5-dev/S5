@@ -561,18 +561,11 @@ class HttpAPIServer {
 
       // TODO date header
 
-      final dlUriProvider = StorageLocationProvider(node, cid.hash, [
-        storageLocationTypeFull,
-      ]);
-
-      dlUriProvider.start();
-
       await handleChunkedFile(
         req,
         res,
         cid.hash,
         cid.size!,
-        dlUriProvider,
         cachePath: join(cachePath, 'streamed_files'),
         logger: node.logger,
         node: node,
@@ -983,18 +976,11 @@ class HttpAPIServer {
               res.add(await node.downloadBytesByHash(servedFile.cid.hash));
               res.close();
             } else {
-              final dlUriProvider =
-                  StorageLocationProvider(node, servedFile.cid.hash, [
-                storageLocationTypeFull,
-              ]);
-              dlUriProvider.start();
-
               await handleChunkedFile(
                 request,
                 res,
                 servedFile.cid.hash,
                 servedFile.cid.size!,
-                dlUriProvider,
                 cachePath: join(cachePath, 'streamed_files'),
                 logger: node.logger,
                 node: node,
