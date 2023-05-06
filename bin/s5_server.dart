@@ -75,6 +75,7 @@ seed = "AUTOMATICALLY_GENERATED_ON_FIRST_START"
 
 [cache] # Caches file objects that are uploaded, streamed or downloaded
 path = "/tmp/s5/cache"
+maxSizeInGB = 4
 
 [database] # Caches peer and object data (small)
 path = "data/hive"
@@ -99,6 +100,7 @@ seed = "AUTOMATICALLY_GENERATED_ON_FIRST_START"
 
 [cache] # Caches file objects that are uploaded, streamed or downloaded
 path = "/cache"
+maxSizeInGB = 4
 
 [database] # Caches peer and object data (small)
 path = "/db"
