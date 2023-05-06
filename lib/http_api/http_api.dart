@@ -539,7 +539,9 @@ class HttpAPIServer {
 
       res.headers.set(
         'content-disposition',
-        'inline; filename="$filename"',
+        req.uri.queryParameters.containsKey('filename')
+            ? 'attachment; filename="$filename"'
+            : 'inline; filename="$filename"',
       );
 
       res.headers.set(
