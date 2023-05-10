@@ -120,11 +120,11 @@ Stream<List<int>> openRead({
 
   while (start < endPos) {
     if (completer.isCompleted) {
-      sub?.cancel();
-
       for (final key in lockedChunks) {
         downloadingChunkLock.remove(key);
       }
+
+      sub?.cancel();
       downloadedEncData.clear();
       return;
     }
@@ -150,29 +150,42 @@ Stream<List<int>> openRead({
       start += chunkSize - offset;
     } else {
       final chunkLockKey = '${hash.toBase64Url()}/$chunk';
-      if (downloadingChunkLock[chunkLockKey] == true &&
+
+      bool initiateDownload = false;
+      if (downloadingChunkLock[chunkLockKey] != null &&
           !lockedChunks.contains(chunkLockKey)) {
         // sub?.cancel();
-        while (downloadingChunkLock[chunkLockKey] == true) {
-          // TODO Risk for infinite loop, add timeout
+        int loopCount = 0;
+        while (downloadingChunkLock[chunkLockKey] != null) {
+          loopCount++;
+          if (loopCount > 100) {
+            initiateDownload = true;
+            break;
+          }
           await Future.delayed(Duration(milliseconds: 10));
         }
 
-        if (offset == 0) {
-          if ((start + chunkCacheFile!.lengthSync()) > endPos) {
-            yield* chunkCacheFile.openRead(0, (endPos % chunkSize));
+        if (!initiateDownload) {
+          if (offset == 0) {
+            if ((start + chunkCacheFile!.lengthSync()) > endPos) {
+              yield* chunkCacheFile.openRead(0, (endPos % chunkSize));
+            } else {
+              yield* chunkCacheFile.openRead();
+            }
           } else {
-            yield* chunkCacheFile.openRead();
+            if (((start - offset) + chunkCacheFile!.lengthSync()) > endPos) {
+              yield* chunkCacheFile.openRead(offset, (endPos % chunkSize));
+            } else {
+              yield* chunkCacheFile.openRead(offset);
+            }
           }
-        } else {
-          if (((start - offset) + chunkCacheFile!.lengthSync()) > endPos) {
-            yield* chunkCacheFile.openRead(offset, (endPos % chunkSize));
-          } else {
-            yield* chunkCacheFile.openRead(offset);
-          }
+          start += chunkSize - offset;
         }
-        start += chunkSize - offset;
       } else {
+        initiateDownload = true;
+      }
+
+      if (initiateDownload) {
         if (storageLocationProvider == null) {
           storageLocationProvider = StorageLocationProvider(
               node,
@@ -188,14 +201,12 @@ Stream<List<int>> openRead({
 
           storageLocationProvider.start();
         }
-        if (storageLocation == null) {
-          storageLocation = await storageLocationProvider.next();
-        }
+        storageLocation ??= await storageLocationProvider.next();
 
         void lockChunk(int index) {
           final chunkLockKey = '${hash.toBase64Url()}/$index';
-          downloadingChunkLock[chunkLockKey] = true;
           lockedChunks.add(chunkLockKey);
+          downloadingChunkLock[chunkLockKey] = true;
         }
 
         lockChunk(chunk);
@@ -204,8 +215,8 @@ Stream<List<int>> openRead({
             baoOutboardBytesCache[storageLocation.location.outboardBytesUrl] ==
                 null) {
           final baoLockKey = '${hash.toBase64Url()}/bao';
-          if (downloadingChunkLock[baoLockKey] == true) {
-            while (downloadingChunkLock[baoLockKey] == true) {
+          if (downloadingChunkLock[baoLockKey] != null) {
+            while (downloadingChunkLock[baoLockKey] != null) {
               // TODO Risk for infinite loop, add timeout
               await Future.delayed(Duration(milliseconds: 10));
             }
@@ -253,10 +264,15 @@ Stream<List<int>> openRead({
                 final downloadUntilChunkExclusive =
                     (endPos / chunkSize).floor() + 1;
 
+                int lockedChunkCount = 0;
                 for (int ci = chunk + 1;
                     ci < downloadUntilChunkExclusive;
                     ci++) {
+                  if (lockedChunkCount > 64) {
+                    break;
+                  }
                   lockChunk(ci);
+                  lockedChunkCount++;
                 }
 
                 final length =
