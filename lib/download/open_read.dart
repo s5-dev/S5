@@ -103,8 +103,6 @@ Stream<List<int>> openRead({
 
   SignedStorageLocation? storageLocation;
 
-  bool downloadStarted = false;
-
   final cacheDirectory = cachePath == null
       ? null
       : Directory(join(
@@ -153,7 +151,8 @@ Stream<List<int>> openRead({
 
       bool initiateDownload = false;
       if (downloadingChunkLock[chunkLockKey] != null &&
-          !lockedChunks.contains(chunkLockKey)) {
+          !lockedChunks.contains(chunkLockKey) &&
+          downloadedEncData.isEmpty) {
         // sub?.cancel();
         int loopCount = 0;
         while (downloadingChunkLock[chunkLockKey] != null) {
@@ -250,12 +249,13 @@ Stream<List<int>> openRead({
 
             bool hasDownloadError = false;
 
-            if (downloadStarted == false) {
+            if (downloadedEncData.isEmpty) {
               String rangeHeader;
 
               if (endPos < (startByte + chunkSize)) {
                 if ((startByte + chunkSize) > totalSize) {
-                  rangeHeader = 'bytes=$encStartByte-';
+                  final end = min(totalSize, encStartByte + encChunkSize * 64);
+                  rangeHeader = 'bytes=$encStartByte-${end - 1}';
                 } else {
                   rangeHeader =
                       'bytes=$encStartByte-${encStartByte + encChunkSize - 1}';
@@ -264,11 +264,11 @@ Stream<List<int>> openRead({
                 final downloadUntilChunkExclusive =
                     (endPos / chunkSize).floor() + 1;
 
-                int lockedChunkCount = 0;
+                int lockedChunkCount = 1;
                 for (int ci = chunk + 1;
                     ci < downloadUntilChunkExclusive;
                     ci++) {
-                  if (lockedChunkCount > 64) {
+                  if (lockedChunkCount >= 64) {
                     break;
                   }
                   lockChunk(ci);
@@ -279,7 +279,8 @@ Stream<List<int>> openRead({
                     encChunkSize * (downloadUntilChunkExclusive - chunk);
 
                 if ((encStartByte + length) > totalSize) {
-                  rangeHeader = 'bytes=$encStartByte-';
+                  final end = min(totalSize, encStartByte + encChunkSize * 64);
+                  rangeHeader = 'bytes=$encStartByte-${end - 1}';
                 } else {
                   rangeHeader =
                       'bytes=$encStartByte-${encStartByte + length - 1}';
@@ -290,8 +291,6 @@ Stream<List<int>> openRead({
               final request =
                   Request('GET', Uri.parse(storageLocation.location.bytesUrl));
               request.headers['range'] = rangeHeader;
-
-              downloadStarted = true;
 
               final response = await httpClient.send(request);
 
@@ -402,7 +401,6 @@ Stream<List<int>> openRead({
             }
 
             downloadedEncData.clear();
-            downloadStarted = false;
 
             node.logger.error(
               '[chunk] download error for chunk $chunk (try #$retryCount)',
