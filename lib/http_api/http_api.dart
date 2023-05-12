@@ -265,7 +265,7 @@ class HttpAPIServer {
       res.headers.set('Tus-Resumable', '1.0.0');
       res.headers.set('Upload-Offset', tus.offset.toString());
       res.headers.set('Upload-Length', tus.totalLength.toString());
-      res.headers.set('Content-Length', tus.totalLength.toString());
+      // res.headers.set('Content-Length', tus.totalLength.toString());
       res.headers.set('Cache-Control', 'no-store');
       // TODO Upload-Metadata
 
@@ -315,10 +315,15 @@ class HttpAPIServer {
 
         res.statusCode = 204;
         res.headers.set('Upload-Offset', tus.totalLength);
+        res.close();
 
         Future.delayed(Duration(minutes: 10)).then((value) {
           tusUploadSessions.remove(uploadId);
         });
+      } else {
+        res.statusCode = 204;
+        res.headers.set('Upload-Offset', tus.offset);
+        res.close();
       }
     });
 
@@ -345,7 +350,10 @@ class HttpAPIServer {
         // TODO If accounts system is enabled, pin to account
         res.statusCode = HttpStatus.conflict;
 
-        throw 'Raw file with CID ${CID(cidTypeRaw, mhash, size: uploadLength)} has already been uploaded to this node';
+        res.write(
+          'Raw file with CID ${CID(cidTypeRaw, mhash, size: uploadLength)} has already been uploaded to this node',
+        );
+        return;
       }
 
       final cacheFile = File(
