@@ -21,7 +21,7 @@ At its core, S5 is a content-addressed storage network similar to IPFS and also 
 
 ## Usage
 
-`docker run -it --rm -p 5050:5050 -v /local/path/to/config:/config --name s5-node ghcr.io/s5-dev/node:0.10.0`
+`docker run -it --rm -p 5050:5050 -v /local/path/to/config:/config --name s5-node ghcr.io/s5-dev/node:latest`
 
 A basic config file is generated for you, just make sure the path to the directory exists.
 
@@ -30,7 +30,7 @@ Or run it with docker compose
 version: '3'
 services:
   s5-node:
-    image: ghcr.io/s5-dev/node:0.10.0
+    image: ghcr.io/s5-dev/node:latest
     volumes:
       - /local/path/to/config:/config
     ports:
