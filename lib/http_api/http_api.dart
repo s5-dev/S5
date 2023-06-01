@@ -11,7 +11,7 @@ import 'package:http/http.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
-import 'package:messagepack/messagepack.dart';
+import 'package:s5_msgpack/s5_msgpack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
 import 'package:s5_server/accounts/account.dart';
@@ -21,6 +21,7 @@ import 'package:s5_server/download/uri_provider.dart';
 import 'package:s5_server/http_api/admin.dart';
 import 'package:s5_server/node.dart';
 import 'package:s5_server/service/accounts.dart';
+import 'package:s5_server/service/p2p.dart';
 import 'package:s5_server/util/uid.dart';
 import 'package:s5_server/util/multipart.dart';
 import 'serve_chunked_file.dart';
@@ -886,7 +887,24 @@ class HttpAPIServer {
         final String? domain = node.config['http']?['api']?['domain'];
 
         if (domain != null) {
-          if (uri.host == 'docs.$domain') {
+          if (uri.host == domain) {
+            if (request.uri.path == '/s5/p2p') {
+              final socket = await WebSocketTransformer.upgrade(request);
+
+              final p = WebSocketPeer(
+                socket,
+                connectionUris: [],
+              );
+
+              runZonedGuarded(
+                () => node.p2p.onNewPeer(p, verifyId: false),
+                (e, st) {
+                  node.logger.catched(e, st);
+                },
+              );
+              return;
+            }
+          } else if (uri.host == 'docs.$domain') {
             cid = CID.decode('zrjD7xwmgP8U6hquPUtSRcZP1J1LvksSwTq4CPZ2ck96FHu');
           } else if (!('.${uri.host}').endsWith('.$domain')) {
             final cidStr = await node.resolveName(uri.host);

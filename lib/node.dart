@@ -7,7 +7,7 @@ import 'dart:typed_data';
 import 'package:cancellation_token/cancellation_token.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
-import 'package:messagepack/messagepack.dart';
+import 'package:s5_msgpack/s5_msgpack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
 import 'package:pool/pool.dart';

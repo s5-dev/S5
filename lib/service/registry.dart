@@ -6,7 +6,7 @@ import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/registry.dart';
 import 'package:lib5/util.dart';
-import 'package:messagepack/messagepack.dart';
+import 'package:s5_msgpack/s5_msgpack.dart';
 import 'package:s5_server/db/hive_key_value_db.dart';
 
 import 'package:s5_server/node.dart';

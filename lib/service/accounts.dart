@@ -9,7 +9,7 @@ import 'package:lib5/util.dart';
 import 'package:s5_server/accounts/account.dart';
 import 'package:s5_server/logger/base.dart';
 import 'package:s5_server/service/sql.dart';
-import 'package:messagepack/messagepack.dart';
+import 'package:s5_msgpack/s5_msgpack.dart';
 
 class AuthResponse {
   final Account? account;
@@ -381,7 +381,8 @@ class AccountsService {
       final auth = await checkAuth(req, 'account/api/account/pins');
       if (auth.denied) return res.unauthorized(auth);
 
-      final cursor = await getObjectPinsCursorForAccount(account: auth.account!);
+      final cursor =
+          await getObjectPinsCursorForAccount(account: auth.account!);
       final pins = await getObjectPinsForAccount(
         account: auth.account!,
         afterCursor: int.parse(

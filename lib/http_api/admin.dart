@@ -17,7 +17,11 @@ class AdminAPI {
     final adminApiKey = base58BitcoinEncode(
       await node.crypto.hashBlake3(
         Uint8List.fromList(
-          node.p2p.nodeKeyPair.extractBytes() + encodeEndian(32, 32),
+          node.p2p.nodeKeyPair.extractBytes() +
+              encodeEndian(
+                node.config['http']?['api']?['admin']?['keyRotation'] ?? 0,
+                32,
+              ),
         ),
       ),
     );

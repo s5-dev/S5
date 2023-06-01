@@ -85,8 +85,8 @@ port = 5050
 
 [p2p.peers]
 initial = [
-  'tcp://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@199.247.20.119:4444', # s5.garden
-  'tcp://z2DWuPbL5pweybXnEB618pMnV58ECj2VPDNfVGm3tFqBvjF@116.203.139.40:4444', # s5.ninja
+  'wss://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@s5.garden/s5/p2p',
+  'wss://z2DWuPbL5pweybXnEB618pMnV58ECj2VPDNfVGm3tFqBvjF@s5.ninja/s5/p2p',
 ]
 ''';
 
@@ -111,7 +111,7 @@ bind = '0.0.0.0'
 
 [p2p.peers]
 initial = [
-  'tcp://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@199.247.20.119:4444', # s5.garden
-  'tcp://z2DWuPbL5pweybXnEB618pMnV58ECj2VPDNfVGm3tFqBvjF@116.203.139.40:4444', # s5.ninja
+  'wss://z2DWuWNZcdSyZLpXFK2uCU3haaWMXrDAgxzv17sDEMHstZb@s5.garden/s5/p2p',
+  'wss://z2DWuPbL5pweybXnEB618pMnV58ECj2VPDNfVGm3tFqBvjF@s5.ninja/s5/p2p',
 ]
 ''';

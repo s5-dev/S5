@@ -7,7 +7,8 @@ import 'package:hive/hive.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
-import 'package:messagepack/messagepack.dart';
+import 'package:s5_msgpack/s5_msgpack.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:s5_server/db/hive_key_value_db.dart';
 import 'package:tint/tint.dart';
 
@@ -15,15 +16,113 @@ import 'package:s5_server/logger/base.dart';
 import 'package:s5_server/model/signed_message.dart';
 import 'package:s5_server/node.dart';
 
-class Peer {
+abstract class Peer {
   late final NodeID id;
+  final List<Uri> connectionUris;
+  bool isConnected = false;
+  late final Uint8List challenge;
 
+  Peer({required this.connectionUris});
+
+  void sendMessage(Uint8List message);
+
+  void listenForMessages(
+    Function callback, {
+    dynamic onDone,
+    Function? onError,
+    required Logger logger,
+  });
+
+  String renderLocationUri();
+}
+
+class WebSocketChannelPeer extends Peer {
+  final WebSocketChannel _socket;
+  final String locationUri;
+
+  WebSocketChannelPeer(
+    this._socket, {
+    required this.locationUri,
+    required super.connectionUris,
+  });
+
+  @override
+  void sendMessage(Uint8List message) {
+    _socket.sink.add(message);
+  }
+
+  @override
+  void listenForMessages(
+    Function callback, {
+    dynamic onDone,
+    Function? onError,
+    required Logger logger,
+  }) {
+    final sub = _socket.stream.listen(
+      (event) async {
+        await callback(event);
+      },
+      onDone: onDone,
+      onError: onError,
+      cancelOnError: false,
+    );
+  }
+
+  @override
+  String renderLocationUri() {
+    return locationUri;
+  }
+}
+
+class WebSocketPeer extends Peer {
+  final WebSocket _socket;
+
+  WebSocketPeer(
+    this._socket, {
+    required super.connectionUris,
+  });
+
+  @override
+  void sendMessage(Uint8List message) {
+    _socket.add(message);
+  }
+
+  @override
+  void listenForMessages(
+    Function callback, {
+    dynamic onDone,
+    Function? onError,
+    required Logger logger,
+  }) {
+    final sub = _socket.listen(
+      (event) async {
+        await callback(event);
+      },
+      onDone: onDone,
+      onError: onError,
+      cancelOnError: false,
+    );
+  }
+
+  @override
+  String renderLocationUri() {
+    return 'WebSocket client';
+  }
+}
+
+class TcpPeer extends Peer {
   final Socket _socket;
+  TcpPeer(
+    this._socket, {
+    required super.connectionUris,
+  });
 
+  @override
   void sendMessage(Uint8List message) {
     _socket.add(encodeEndian(message.length, 4) + message);
   }
 
+  @override
   void listenForMessages(
     Function callback, {
     dynamic onDone,
@@ -57,17 +156,7 @@ class Peer {
     );
   }
 
-  final List<Uri> connectionUris;
-
-  bool isConnected = false;
-
-  late final Uint8List challenge;
-
-  Peer(
-    this._socket, {
-    required this.connectionUris,
-  });
-
+  @override
   String renderLocationUri() {
     return connectionUris.isEmpty
         ? _socket.remoteAddress.address
@@ -109,7 +198,7 @@ class P2PService {
       final socket = await ServerSocket.bind('0.0.0.0', networkSelf['port']);
       socket.listen(
         (peerSocket) {
-          final p = Peer(
+          final p = TcpPeer(
             peerSocket,
             connectionUris: [],
           );
@@ -130,9 +219,17 @@ class P2PService {
       selfConnectionUris.add(
         Uri.parse('tcp://${networkSelf['ip']}:${networkSelf['port']}'),
       );
-
-      logger.info('connection uris: $selfConnectionUris');
     }
+
+    final String? domain = node.config['http']?['api']?['domain'];
+    if (domain != null && node.config['p2p']?['self']?['disabled'] != true) {
+      selfConnectionUris.add(
+        Uri.parse('wss://$domain/s5/p2p'),
+      );
+    }
+
+    logger.info('connection uris: $selfConnectionUris');
+
     final initialPeers = node.config['p2p']?['peers']?['initial'] ?? [];
 
     for (final p in initialPeers) {
@@ -538,20 +635,25 @@ class P2PService {
   }
 
   void connectToNode(List<Uri> connectionUris) async {
-    final connectionUri = connectionUris.first;
-    final protocol = connectionUri.scheme;
-    if (protocol != 'tcp') {
-      throw 'Protocol $protocol not supported';
+    final connectionUri = connectionUris.firstWhere(
+      (uri) => ['ws', 'wss'].contains(uri.scheme),
+      orElse: () => connectionUris.firstWhere(
+        (uri) => uri.scheme == 'tcp',
+        orElse: () => Uri(scheme: 'unsupported'),
+      ),
+    );
+    if (connectionUri.scheme == 'unsupported') {
+      throw 'None of the available connection URIs are supported ($connectionUris)';
     }
+
+    final protocol = connectionUri.scheme;
+
     if (connectionUri.userInfo.isEmpty) {
       throw 'Connection URI does not contain node id';
     }
     final id = NodeID.decode(connectionUri.userInfo);
 
     reconnectDelay[id] = reconnectDelay[id] ?? 1;
-
-    final ip = connectionUri.host;
-    final port = connectionUri.port;
 
     if (id == localNodeId) {
       return;
@@ -560,16 +662,36 @@ class P2PService {
     runZonedGuarded(
       () async {
         logger.verbose('[connect] $connectionUri');
+        if (protocol == 'tcp') {
+          final ip = connectionUri.host;
+          final port = connectionUri.port;
+          final socket = await Socket.connect(ip, port);
 
-        final socket = await Socket.connect(ip, port);
+          await onNewPeer(
+            TcpPeer(
+              socket,
+              connectionUris: [connectionUri],
+            )..id = id,
+            verifyId: true,
+          );
+        } else {
+          final locationUri = connectionUri.replace(
+            userInfo: '',
+          );
 
-        await onNewPeer(
-          Peer(
-            socket,
-            connectionUris: [connectionUri],
-          )..id = id,
-          verifyId: true,
-        );
+          final channel = WebSocketChannel.connect(
+            locationUri,
+          );
+
+          await onNewPeer(
+            WebSocketChannelPeer(
+              channel,
+              locationUri: locationUri.toString(),
+              connectionUris: [connectionUri],
+            )..id = id,
+            verifyId: true,
+          );
+        }
       },
       (e, st) async {
         if (retried) return;
