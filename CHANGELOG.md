@@ -1,3 +1,13 @@
+## 0.11.0
+
+- Add support for WebSocket p2p connections and use them by default if a domain is configured
+- Update to Dart 3.0.0 and dependencies
+- New file streaming implementation
+- Add admin key rotation using the config file (increment `http.api.admin.keyRotation`)
+- Add GitHub Actions CI for docker builds (thanks @lukehmcc)
+- Fixes for the Sia object store
+- Other bug fixes
+
 ## 0.10.0
 
 - Added new **admin API** for account management
