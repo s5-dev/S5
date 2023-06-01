@@ -1,25 +1,24 @@
 name: s5_server
 description: Decentralized content-addressed storage network
 publish_to: none
-version: 0.10.0
+version: 0.11.0
 
 environment:
-  sdk: ">=2.18.2 <3.0.0"
+  sdk: ^3.0.0
 
 dependencies:
-  lib5:
-    git: https://github.com/s5-dev/lib5.git
+  lib5: ^0.1.0
   alfred:
     git: https://github.com/redsolver/alfred.git
-  belatuk_range_header: ^5.0.0
+  belatuk_range_header: ^6.0.0
   base_codecs: ^1.0.1
   convert: ^3.0.2
-  http: ^0.13.5
+  http: ^1.0.0
   minio:
     git: https://github.com/redsolver/minio-dart.git
   path: ^1.8.2
   hive: ^2.2.3
-  toml: ^0.13.1
+  toml: ^0.14.0
   cryptography: ^2.0.5
   mime: ^1.0.2
   tint: ^2.0.0
@@ -30,12 +29,15 @@ dependencies:
   sqflite_common_ffi: ^2.2.0+1
   ffi: ^2.0.1
   flutter_rust_bridge: ^1.73.0
-  cancellation_token: ^1.5.0
+  cancellation_token: ^2.0.0
   # ! disabled because the arweave-dart library is licensed GPL-2.0 and this repo is MIT
   # arweave:
   #   git: https://github.com/ardriveapp/arweave-dart.git
 
+dependency_overrides:
+  http: 1.0.0
+
 dev_dependencies:
   lints: ^2.0.0
   test: ^1.16.0
-  ffigen: ^7.2.4
+  ffigen: ^8.0.2
