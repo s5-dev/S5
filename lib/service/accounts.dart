@@ -16,6 +16,8 @@ class AuthResponse {
   final bool denied;
   final String? error;
 
+  bool get restricted => account?.isRestricted ?? false;
+
   AuthResponse({
     required this.account,
     required this.denied,
@@ -357,6 +359,7 @@ class AccountsService {
         "createdAt": auth.account!.createdAt,
         "quotaExceeded": false,
         "emailConfirmed": false,
+        "isRestricted": auth.account!.isRestricted,
         "tier": tiers[auth.account!.tier],
       };
     });
@@ -372,6 +375,7 @@ class AccountsService {
         "createdAt": auth.account!.createdAt,
         "quotaExceeded": false,
         "emailConfirmed": false,
+        "isRestricted": auth.account!.isRestricted,
         "tier": tiers[auth.account!.tier],
         "stats": stats,
       };
@@ -527,10 +531,12 @@ WHERE object_hash = ?''',
       whereArgs: [id],
     );
     final account = res.first;
+
     return Account(
       id: id,
       createdAt: account['created_at'] as int,
       email: account['email'] as String?,
+      isRestricted: account['is_restricted'] == 1,
     );
   }
 
@@ -543,6 +549,7 @@ WHERE object_hash = ?''',
               id: account['id'] as int,
               createdAt: account['created_at'] as int,
               email: account['email'] as String?,
+              isRestricted: account['is_restricted'] == 1,
             ))
         .toList();
   }
@@ -565,6 +572,7 @@ WHERE ID = (
       id: account['id'] as int,
       createdAt: account['created_at'] as int,
       email: account['email'] as String?,
+      isRestricted: account['is_restricted'] == 1,
     );
   }
 
@@ -588,6 +596,15 @@ WHERE ID = (
       'label': label,
     });
     return authToken;
+  }
+
+  Future<void> setRestrictedStatus(int id, bool restricted) async {
+    await sql.db.update(
+      'Account',
+      {'is_restricted': restricted ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 }
 

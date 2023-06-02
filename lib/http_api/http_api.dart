@@ -78,7 +78,7 @@ class HttpAPIServer {
 
     app.post('/s5/upload/directory', (req, res) async {
       final auth = await node.checkAuth(req, 's5/upload/directory');
-      if (auth.denied) return res.unauthorized(auth);
+      if (auth.denied || auth.restricted) return res.unauthorized(auth);
 
       if (node.store == null) {
         throw 'No store configured, uploads not possible';
@@ -119,7 +119,7 @@ class HttpAPIServer {
 
     app.post('/s5/upload', (req, res) async {
       final auth = await node.checkAuth(req, 's5/upload');
-      if (auth.denied) return res.unauthorized(auth);
+      if (auth.denied || auth.restricted) return res.unauthorized(auth);
 
       if (node.store == null) {
         throw 'No store configured, uploads not possible';
@@ -223,7 +223,7 @@ class HttpAPIServer {
     // TODO Add ?routingHints=
     app.post('/s5/pin/:cid', (req, res) async {
       final auth = await node.checkAuth(req, 's5/pin');
-      if (auth.denied) return res.unauthorized(auth);
+      if (auth.denied || auth.restricted) return res.unauthorized(auth);
 
       final cid = CID.decode(req.params['cid']);
 
@@ -330,7 +330,7 @@ class HttpAPIServer {
 
     app.post('/s5/upload/tus', (req, res) async {
       final auth = await node.checkAuth(req, 's5/upload/tus');
-      if (auth.denied) return res.unauthorized(auth);
+      if (auth.denied || auth.restricted) return res.unauthorized(auth);
 
       final uploadLength = int.parse(req.headers.value('upload-length')!);
 
@@ -380,7 +380,7 @@ class HttpAPIServer {
 
     app.post('/s5/import/http', (req, res) async {
       final auth = await node.checkAuth(req, 's5/import/http');
-      if (auth.denied) return res.unauthorized(auth);
+      if (auth.denied || auth.restricted) return res.unauthorized(auth);
 
       if (node.store == null) {
         throw 'No store configured, uploads not possible';
@@ -708,6 +708,8 @@ class HttpAPIServer {
 
       final map = node.getCachedStorageLocations(hash, [
         storageLocationTypeFull,
+        storageLocationTypeFile,
+        storageLocationTypeBridge,
       ]);
 
       final availableNodes = map.keys.toList();
@@ -912,6 +914,11 @@ class HttpAPIServer {
           } else {
             // TODO Check .ns.
           }
+        }
+
+        if (cid == null && request.uri.path.startsWith('/s5/admin/app')) {
+          // ! Admin Web UI
+          cid = CID.decode('zrjD3HKdKj56sTsHcFd5XhcVf72SGFVZQnMDq2RuYCe7Hiw');
         }
 
         if (cid == null) {
