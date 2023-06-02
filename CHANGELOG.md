@@ -1,3 +1,11 @@
+## 0.11.3
+
+- Add basic Admin Web UI for account management (`/s5/admin/app`)
+- Accounts can now be restricted to disable all upload endpoints
+- Add some new Admin API methods (`/accounts/full` and `/accounts/set_restricted_status`)
+- Fix Docker image build
+- Fix bug in the `/debug/download_urls` API (thanks @parajbs-dev)
+
 ## 0.11.0
 
 - Add support for WebSocket p2p connections and use them by default if a domain is configured
