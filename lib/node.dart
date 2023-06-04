@@ -667,7 +667,11 @@ class S5Node {
     );
   }
 
-  Future<CID> uploadLocalFile(File file, {bool withOutboard = true}) async {
+  Future<CID> uploadLocalFile(
+    File file, {
+    bool withOutboard = true,
+    Function? onProgress,
+  }) async {
 /*     if (store!.canPutAsync) {
       logger.verbose('using async upload strategy');
 
@@ -717,9 +721,22 @@ class S5Node {
       ),
     );
 
+    int pushedByteCount = 0;
+
+    if (onProgress != null) {
+      Stream.periodic(Duration(milliseconds: 100)).listen((_) {
+        onProgress(pushedByteCount / size);
+      });
+    }
+
     await store!.put(
       hash,
-      file.openRead().map((event) => Uint8List.fromList(event)),
+      onProgress == null
+          ? file.openRead().map((event) => Uint8List.fromList(event))
+          : file.openRead().map((event) {
+              pushedByteCount += event.length;
+              return Uint8List.fromList(event);
+            }),
       size,
     );
     if (size > defaultChunkSize && withOutboard) {
