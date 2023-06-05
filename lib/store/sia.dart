@@ -204,7 +204,8 @@ class SiaObjectStore extends ObjectStore {
 
     return AccountInfo(
       serviceName: 'Sia',
-      usedStorageBytes: stats['totalObjectsSize'],
+      // TODO This only works for default redundancy
+      usedStorageBytes: ((stats['totalSectorsSize'] as int) / 3).round(),
     );
   }
 }
