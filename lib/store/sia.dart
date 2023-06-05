@@ -203,6 +203,7 @@ class SiaObjectStore extends ObjectStore {
     final stats = jsonDecode(res.body);
 
     return AccountInfo(
+      serviceName: 'Sia',
       usedStorageBytes: stats['totalObjectsSize'],
     );
   }

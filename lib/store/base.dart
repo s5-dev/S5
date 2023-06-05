@@ -41,6 +41,7 @@ abstract class ObjectStore {
 }
 
 class AccountInfo {
+  final String serviceName;
   final String? userIdentifier;
 
   final bool isRestricted;
@@ -53,6 +54,7 @@ class AccountInfo {
   final int? totalStorageBytes;
 
   AccountInfo({
+    required this.serviceName,
     this.userIdentifier,
     required this.usedStorageBytes,
     this.isRestricted = false,

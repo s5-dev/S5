@@ -217,6 +217,7 @@ class PixeldrainObjectStore extends ObjectStore {
     final int storageSpace = userInfo['subscription']['storage_space'];
 
     return AccountInfo(
+      serviceName: 'Pixeldrain',
       userIdentifier: userInfo['username'],
       usedStorageBytes: userInfo['storage_space_used'],
       totalStorageBytes: storageSpace == -1 ? null : storageSpace,
