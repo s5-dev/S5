@@ -671,6 +671,7 @@ class S5Node {
     File file, {
     bool withOutboard = true,
     Function? onProgress,
+    CancellationToken? cancelToken,
   }) async {
 /*     if (store!.canPutAsync) {
       logger.verbose('using async upload strategy');
@@ -734,6 +735,7 @@ class S5Node {
       onProgress == null
           ? file.openRead().map((event) => Uint8List.fromList(event))
           : file.openRead().map((event) {
+              if (cancelToken?.isCancelled ?? false) throw 'Upload cancelled';
               pushedByteCount += event.length;
               return Uint8List.fromList(event);
             }),
