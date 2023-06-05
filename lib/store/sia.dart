@@ -11,6 +11,7 @@ import 'package:lib5/lib5.dart';
 import 'base.dart';
 
 class SiaObjectStore extends ObjectStore {
+  final String busApiUrl;
   final String workerApiUrl;
   final String apiPassword;
   final Client httpClient;
@@ -57,6 +58,7 @@ class SiaObjectStore extends ObjectStore {
 
   SiaObjectStore({
     required this.workerApiUrl,
+    required this.busApiUrl,
     required this.apiPassword,
     required this.httpClient,
     required this.downloadUrls,
@@ -190,5 +192,18 @@ class SiaObjectStore extends ObjectStore {
       throw 'Upload failed: HTTP ${res.statusCode}: ${res.body}';
     }
     availableBaoOutboardHashes.add(hash);
+  }
+
+  @override
+  Future<AccountInfo> getAccountInfo() async {
+    final res = await httpClient.get(
+      Uri.parse('$busApiUrl/stats/objects'),
+      headers: _headers,
+    );
+    final stats = jsonDecode(res.body);
+
+    return AccountInfo(
+      usedStorageBytes: stats['totalObjectsSize'],
+    );
   }
 }

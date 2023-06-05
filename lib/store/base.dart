@@ -34,4 +34,32 @@ abstract class ObjectStore {
     Uint8List outboard,
   );
   Future<void> delete(Multihash hash);
+
+  Future<AccountInfo> getAccountInfo() {
+    throw UnimplementedError();
+  }
+}
+
+class AccountInfo {
+  final String? userIdentifier;
+
+  final bool isRestricted;
+  final String? subscription;
+  final String? warning;
+
+  final int usedStorageBytes;
+  final int? expiryDays;
+  final int? maxFileSize;
+  final int? totalStorageBytes;
+
+  AccountInfo({
+    this.userIdentifier,
+    required this.usedStorageBytes,
+    this.isRestricted = false,
+    this.warning,
+    this.expiryDays,
+    this.maxFileSize,
+    this.totalStorageBytes,
+    this.subscription,
+  });
 }

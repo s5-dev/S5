@@ -204,4 +204,28 @@ class PixeldrainObjectStore extends ObjectStore {
     }
     availableBaoOutboardHashes[hash] = json.decode(res.body)['id'];
   }
+
+  @override
+  Future<AccountInfo> getAccountInfo() async {
+    final res = await httpClient.get(
+      _getApiUri('/user'),
+      headers: _headers,
+    );
+
+    final userInfo = jsonDecode(res.body);
+    final int expiryDays = userInfo['subscription']['file_expiry_days'];
+    final int storageSpace = userInfo['subscription']['storage_space'];
+
+    return AccountInfo(
+      userIdentifier: userInfo['username'],
+      usedStorageBytes: userInfo['storage_space_used'],
+      totalStorageBytes: storageSpace == -1 ? null : storageSpace,
+      expiryDays: expiryDays == -1 ? null : expiryDays,
+      maxFileSize: userInfo['subscription']['file_size_limit'],
+      warning: userInfo['hotlinking_enabled'] != true
+          ? 'Hotlinking needs to be enabled for downloads to work'
+          : null,
+      subscription: userInfo['subscription']['name'],
+    );
+  }
 }

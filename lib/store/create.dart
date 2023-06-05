@@ -86,8 +86,12 @@ Map<String, ObjectStore> createStoresFromConfig(
     } */
 
   if (siaConfig != null) {
+    final String workerApiUrl = siaConfig['workerApiUrl']!;
     stores['sia'] = SiaObjectStore(
-      workerApiUrl: siaConfig['workerApiUrl']!,
+      workerApiUrl: workerApiUrl,
+      busApiUrl: siaConfig['busApiUrl'] == null
+          ? (workerApiUrl.substring(0, workerApiUrl.length - 11) + '/api/bus')
+          : siaConfig['busApiUrl'],
       apiPassword: siaConfig['apiPassword']!,
       downloadUrls: [siaConfig['downloadUrl']!],
       httpClient: httpClient,
