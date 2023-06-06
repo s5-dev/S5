@@ -30,7 +30,7 @@ class SiaObjectStore extends ObjectStore {
   @override
   Future<void> init() async {
     final res =
-        await httpClient.get(_getApiUri('/objects/1/'), headers: _headers);
+        await httpClient.get(_getApiUri('/objects/s5/'), headers: _headers);
     if (res.statusCode == 500) {
       return;
     }
@@ -43,11 +43,11 @@ class SiaObjectStore extends ObjectStore {
       final String key = object['name'];
       if (key.endsWith('.obao')) {
         availableBaoOutboardHashes.add(
-          Multihash.fromBase64Url(key.substring(3).split('.')[0]),
+          Multihash.fromBase64Url(key.substring(4).split('.')[0]),
         );
       } else {
         availableHashes.add(
-          Multihash.fromBase64Url(key.substring(3)),
+          Multihash.fromBase64Url(key.substring(4)),
         );
       }
     }
@@ -70,9 +70,9 @@ class SiaObjectStore extends ObjectStore {
 
   String getObjectKeyForHash(Multihash hash, [String? ext]) {
     if (ext != null) {
-      return '/objects/1/${hash.toBase64Url()}.$ext';
+      return '/objects/s5/${hash.toBase64Url()}.$ext';
     }
-    return '/objects/1/${hash.toBase64Url()}';
+    return '/objects/s5/${hash.toBase64Url()}';
   }
 
   final _random = Random();
