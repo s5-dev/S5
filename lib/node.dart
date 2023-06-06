@@ -201,6 +201,7 @@ class S5Node {
 
     dlUriProvider.start();
 
+    int retryCount = 0;
     while (true) {
       final dlUri = await dlUriProvider.next();
 
@@ -233,6 +234,10 @@ class S5Node {
         logger.catched(e, st);
 
         dlUriProvider.downvote(dlUri);
+      }
+      retryCount++;
+      if (retryCount > 32) {
+        throw 'Too many retries';
       }
     }
   }
