@@ -172,7 +172,26 @@ class SiaObjectStore extends ObjectStore {
 
   @override
   Future<void> delete(Multihash hash) async {
-    throw UnimplementedError();
+    if (availableBaoOutboardHashes.contains(hash)) {
+      final res = await httpClient.delete(
+        _getApiUri(getObjectKeyForHash(hash, 'obao')),
+        headers: _headers,
+      );
+      if (res.statusCode != 200) {
+        throw 'Delete failed: HTTP ${res.statusCode}: ${res.body}';
+      }
+      availableBaoOutboardHashes.remove(hash);
+    }
+    if (availableHashes.contains(hash)) {
+      final res = await httpClient.delete(
+        _getApiUri(getObjectKeyForHash(hash)),
+        headers: _headers,
+      );
+      if (res.statusCode != 200) {
+        throw 'Delete failed: HTTP ${res.statusCode}: ${res.body}';
+      }
+      availableHashes.remove(hash);
+    }
   }
 
   @override
