@@ -40,7 +40,7 @@ class StorageLocationProvider {
     while (true) {
       final newUris = node.getCachedStorageLocations(hash, types);
 
-      if (availableNodes.isEmpty && newUris.isEmpty && !requestSent) {
+      if (availableNodes.isEmpty && newUris.length < 2 && !requestSent) {
         node.p2p.sendHashRequest(hash, types);
         requestSent = true;
       }
