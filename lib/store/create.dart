@@ -6,6 +6,7 @@ import 'package:minio/minio.dart';
 import 'package:s5_server/node.dart';
 
 import 'base.dart';
+import 'ipfs.dart';
 import 'local.dart';
 import 'pixeldrain.dart';
 import 's3.dart';
@@ -20,6 +21,7 @@ Map<String, ObjectStore> createStoresFromConfig(
   final localConfig = config['store']?['local'];
   final siaConfig = config['store']?['sia'];
   final pixeldrainConfig = config['store']?['pixeldrain'];
+  final ipfsConfig = config['store']?['ipfs'];
   final arweaveConfig = config['store']?['arweave'];
   final estuaryConfig = config['store']?['estuary'];
 
@@ -68,6 +70,14 @@ Map<String, ObjectStore> createStoresFromConfig(
     stores['local'] = LocalObjectStore(
       Directory(localConfig['path']!),
       localConfig['http'],
+    );
+  }
+
+  if (ipfsConfig != null) {
+    stores['ipfs'] = IPFSObjectStore(
+      ipfsConfig['gatewayUrl'],
+      ipfsConfig['apiUrl'],
+      ipfsConfig['apiAuthorizationHeader'],
     );
   }
 
