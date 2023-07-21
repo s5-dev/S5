@@ -1,3 +1,14 @@
+## 0.12.0
+
+- **BREAKING** [sia/renterd] Change object prefix to `/s5/`
+- [sia/renterd] Implement delete
+- [ipfs] Add IPFS Object Store
+- [node] Add optional network id
+- [node] Fix download issue when local store is down
+- [node] Limit retry count
+- [api] Add optional onProgress callback
+- [api] Add CancellationToken to local file upload
+
 ## 0.11.3
 
 - Add basic Admin Web UI for account management (`/s5/admin/app`)
