@@ -32,8 +32,9 @@ class AdminAPI {
 
     void checkAuth(HttpRequest req) {
       if (req.headers.value('authorization')?.substring(7) != adminApiKey) {
-        // req.response.statusCode = 401;
-        throw 'Unauthorized';
+        if (req.uri.queryParameters['admin_api_key'] != adminApiKey) {
+          throw 'Unauthorized';
+        }
       }
     }
 
