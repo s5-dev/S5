@@ -68,6 +68,13 @@ class AdminAPI {
       return {'id': id};
     });
 
+    app.delete('/s5/admin/accounts', (req, res) async {
+      checkAuth(req);
+      final accountId = int.parse(req.uri.queryParameters['id']!);
+      await node.accounts!.deleteAccount(accountId);
+      return '';
+    });
+
     app.post('/s5/admin/accounts/set_restricted_status', (req, res) async {
       checkAuth(req);
       await node.accounts!.setRestrictedStatus(

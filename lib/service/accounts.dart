@@ -531,6 +531,13 @@ WHERE object_hash = ?''',
     });
   }
 
+  Future<void> deleteAccount(int id) async {
+    await sql.db.delete('Pin', where: 'account_id = ?', whereArgs: [id]);
+    await sql.db.delete('AuthToken', where: 'account_id = ?', whereArgs: [id]);
+    await sql.db.delete('PublicKey', where: 'account_id = ?', whereArgs: [id]);
+    await sql.db.delete('Account', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<Account> getAccountById(int id) async {
     final res = await sql.db.query(
       'Account',
