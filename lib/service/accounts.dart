@@ -568,6 +568,7 @@ WHERE object_hash = ?''',
       createdAt: account['created_at'] as int,
       email: account['email'] as String?,
       isRestricted: account['is_restricted'] == 1,
+      tier: account['tier'] as int,
     );
   }
 
@@ -581,6 +582,7 @@ WHERE object_hash = ?''',
               createdAt: account['created_at'] as int,
               email: account['email'] as String?,
               isRestricted: account['is_restricted'] == 1,
+              tier: account['tier'] as int,
             ))
         .toList();
   }
@@ -604,6 +606,7 @@ WHERE ID = (
       createdAt: account['created_at'] as int,
       email: account['email'] as String?,
       isRestricted: account['is_restricted'] == 1,
+      tier: account['tier'] as int,
     );
   }
 
@@ -633,6 +636,15 @@ WHERE ID = (
     await sql.db.update(
       'Account',
       {'is_restricted': restricted ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> setTier(int id, int tier) async {
+    await sql.db.update(
+      'Account',
+      {'tier': tier},
       where: 'id = ?',
       whereArgs: [id],
     );

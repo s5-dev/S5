@@ -3,13 +3,14 @@ class Account {
   final int createdAt;
   final String? email;
   final bool isRestricted;
-  int get tier => 1;
+  final int tier;
 
   Account({
     required this.id,
     required this.createdAt,
     required this.email,
     required this.isRestricted,
+    required this.tier,
   });
   toJson() => {
         'id': id,

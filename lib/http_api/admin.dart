@@ -4,7 +4,6 @@ import 'package:alfred/alfred.dart';
 import 'package:base_codecs/base_codecs.dart';
 import 'package:lib5/util.dart';
 import 'package:s5_server/node.dart';
-import 'package:s5_server/service/accounts.dart';
 
 class AdminAPI {
   // ! /s5/admin
@@ -45,6 +44,13 @@ class AdminAPI {
       };
     });
 
+    app.get('/s5/admin/accounts/tiers', (req, res) async {
+      checkAuth(req);
+      return {
+        'tiers': node.accounts!.tiers.values.toList(),
+      };
+    });
+
     app.get('/s5/admin/accounts/full', (req, res) async {
       checkAuth(req);
       final res = await node.accounts!.getAllAccounts();
@@ -80,6 +86,15 @@ class AdminAPI {
       await node.accounts!.setRestrictedStatus(
         int.parse(req.uri.queryParameters['id']!),
         req.requestedUri.queryParameters['status'] == 'true',
+      );
+      return '';
+    });
+
+    app.post('/s5/admin/accounts/set_tier', (req, res) async {
+      checkAuth(req);
+      await node.accounts!.setTier(
+        int.parse(req.uri.queryParameters['id']!),
+        int.parse(req.requestedUri.queryParameters['tier']!),
       );
       return '';
     });

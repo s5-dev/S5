@@ -858,7 +858,7 @@ class HttpAPIServer {
           'access-control-allow-methods':
               'GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE',
           'access-control-allow-headers':
-              'User-Agent,X-Requested-With,If-Modified-Since,If-None-Match,Cache-Control,Content-Type,Range,X-HTTP-Method-Override,upload-offset,upload-metadata,upload-length,tus-version,tus-resumable,tus-extension,tus-max-size,upload-concat,location',
+              'User-Agent,X-Requested-With,If-Modified-Since,If-None-Match,Cache-Control,Content-Type,Range,X-HTTP-Method-Override,upload-offset,upload-metadata,upload-length,tus-version,tus-resumable,tus-extension,tus-max-size,upload-concat,location,authorization',
           'access-control-expose-headers':
               'Content-Length,Content-Range,ETag,Accept-Ranges,upload-offset,upload-metadata,upload-length,tus-version,tus-resumable,tus-extension,tus-max-size,upload-concat,location',
           'access-control-allow-credentials': 'true',
@@ -929,7 +929,7 @@ class HttpAPIServer {
 
         if (cid == null && request.uri.path.startsWith('/s5/admin/app')) {
           // ! Admin Web UI
-          cid = CID.decode('zrjD3HKdKj56sTsHcFd5XhcVf72SGFVZQnMDq2RuYCe7Hiw');
+          cid = CID.decode('zrjLLzNHhqKvoDhqmDxTXb71gnvwGT6ypLmHcofnUPeS6Xp');
           checkAuth = false;
         }
 
