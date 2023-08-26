@@ -516,7 +516,16 @@ WHERE object_hash = ?''',
     );
   }
 
-  Future<int> createAccount(String? email) {
+  Future<int> createAccount(String? email) async {
+    final res = await sql.db.query(
+      'Account',
+      where: 'email = ?',
+      whereArgs: [email],
+    );
+    if (res.isNotEmpty) {
+      throw 'This email address is already in use by another account on this node';
+    }
+
     return sql.db.insert('Account', {
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'email': email,
