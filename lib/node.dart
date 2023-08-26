@@ -359,12 +359,26 @@ class S5Node {
     );
   }
 
-  Future<AuthResponse> checkAuth(HttpRequest req, String scope) async {
+  Future<AuthResponse> checkAuth(
+    HttpRequest req,
+    String scope, {
+    bool restricted = false,
+  }) async {
     if (accounts == null) {
       // TODO Return "default account"
       return AuthResponse(account: null, denied: false, error: null);
     }
-    return accounts!.checkAuth(req, scope);
+    final res = await accounts!.checkAuth(req, scope);
+    if (restricted) {
+      if (res.account?.isRestricted ?? false) {
+        return AuthResponse(
+          account: res.account,
+          denied: true,
+          error: 'This account is restricted',
+        );
+      }
+    }
+    return res;
   }
 
   Map<NodeID, StorageLocation> getCachedStorageLocations(
@@ -600,6 +614,11 @@ class S5Node {
       await completer.future;
 
       await sink.close();
+
+      if (cancelToken?.isCancelled ?? false) {
+        await outputFile.delete();
+        throw CancelledException();
+      }
 
       final b3hash = await rust.hashBlake3File(path: outputFile.path);
       final localFileHash =

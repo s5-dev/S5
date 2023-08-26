@@ -77,8 +77,12 @@ class HttpAPIServer {
     app.head('/s5/upload/directory', (req, res) => '');
 
     app.post('/s5/upload/directory', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/upload/directory');
-      if (auth.denied || auth.restricted) return res.unauthorized(auth);
+      final auth = await node.checkAuth(
+        req,
+        's5/upload/directory',
+        restricted: true,
+      );
+      if (auth.denied) return res.unauthorized(auth);
 
       if (node.store == null) {
         throw 'No store configured, uploads not possible';
@@ -118,8 +122,8 @@ class HttpAPIServer {
     app.head('/s5/upload', (req, res) => '');
 
     app.post('/s5/upload', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/upload');
-      if (auth.denied || auth.restricted) return res.unauthorized(auth);
+      final auth = await node.checkAuth(req, 's5/upload', restricted: true);
+      if (auth.denied) return res.unauthorized(auth);
 
       if (node.store == null) {
         throw 'No store configured, uploads not possible';
@@ -222,8 +226,8 @@ class HttpAPIServer {
 
     // TODO Add ?routingHints=
     app.post('/s5/pin/:cid', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/pin');
-      if (auth.denied || auth.restricted) return res.unauthorized(auth);
+      final auth = await node.checkAuth(req, 's5/pin', restricted: true);
+      if (auth.denied) return res.unauthorized(auth);
 
       final cid = CID.decode(req.params['cid']);
 
@@ -329,8 +333,8 @@ class HttpAPIServer {
     });
 
     app.post('/s5/upload/tus', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/upload/tus');
-      if (auth.denied || auth.restricted) return res.unauthorized(auth);
+      final auth = await node.checkAuth(req, 's5/upload/tus', restricted: true);
+      if (auth.denied) return res.unauthorized(auth);
 
       final uploadLength = int.parse(req.headers.value('upload-length')!);
 
@@ -379,8 +383,12 @@ class HttpAPIServer {
     });
 
     app.post('/s5/import/http', (req, res) async {
-      final auth = await node.checkAuth(req, 's5/import/http');
-      if (auth.denied || auth.restricted) return res.unauthorized(auth);
+      final auth = await node.checkAuth(
+        req,
+        's5/import/http',
+        restricted: true,
+      );
+      if (auth.denied) return res.unauthorized(auth);
 
       if (node.store == null) {
         throw 'No store configured, uploads not possible';
@@ -886,10 +894,12 @@ class HttpAPIServer {
 
         final parts = uri.host.split('.');
 
+        bool checkAuth = true;
         final String? domain = node.config['http']?['api']?['domain'];
 
         if (domain != null) {
-          if (uri.host == domain) {
+          if (uri.host == 'localhost') {
+          } else if (uri.host == domain) {
             if (request.uri.path == '/s5/p2p') {
               final socket = await WebSocketTransformer.upgrade(request);
 
@@ -908,6 +918,7 @@ class HttpAPIServer {
             }
           } else if (uri.host == 'docs.$domain') {
             cid = CID.decode('zrjD7xwmgP8U6hquPUtSRcZP1J1LvksSwTq4CPZ2ck96FHu');
+            checkAuth = false;
           } else if (!('.${uri.host}').endsWith('.$domain')) {
             final cidStr = await node.resolveName(uri.host);
             cid = CID.decode(cidStr);
@@ -919,6 +930,7 @@ class HttpAPIServer {
         if (cid == null && request.uri.path.startsWith('/s5/admin/app')) {
           // ! Admin Web UI
           cid = CID.decode('zrjD3HKdKj56sTsHcFd5XhcVf72SGFVZQnMDq2RuYCe7Hiw');
+          checkAuth = false;
         }
 
         if (cid == null) {
@@ -928,8 +940,10 @@ class HttpAPIServer {
         }
 
         if (cid != null) {
-          final auth = await node.checkAuth(request, 's5/subdomain/load');
-          if (auth.denied) return res.unauthorized(auth);
+          if (checkAuth) {
+            final auth = await node.checkAuth(request, 's5/subdomain/load');
+            if (auth.denied) return res.unauthorized(auth);
+          }
 
           if (cid.type == cidTypeRaw) {
             throw 'Raw files can\'t be served on a subdomain. Try loading this CID on the root domain';

@@ -16,8 +16,6 @@ class AuthResponse {
   final bool denied;
   final String? error;
 
-  bool get restricted => account?.isRestricted ?? false;
-
   AuthResponse({
     required this.account,
     required this.denied,
