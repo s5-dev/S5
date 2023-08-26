@@ -45,11 +45,15 @@ void main(List<String> arguments) async {
     );
   }
 
+  final config = (await TomlDocument.load(file.path)).toMap();
+  if (config['logger']?['file'] != null) {
+    logger.sink = File(config['logger']['file']!)
+        .openWrite(mode: FileMode.writeOnlyAppend);
+  }
+
   logger.info('');
   logger.info('s5-dart'.green().bold() + ' ' + 'v$nodeVersion'.red().bold());
   logger.info('');
-
-  final config = (await TomlDocument.load(file.path)).toMap();
 
   final node = S5Node(
     config,
@@ -66,7 +70,8 @@ void main(List<String> arguments) async {
   );
 }
 
-const defaultConfig = '''# ! Documentation: https://docs.sfive.net/install/config
+const defaultConfig =
+    '''# ! Documentation: https://docs.sfive.net/install/config
 
 name = "my-s5-node"
 
