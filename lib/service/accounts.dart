@@ -164,6 +164,9 @@ class AccountsService {
     }
   }
 
+  bool get restrictAccountWhenStorageLimitReached =>
+      config['restrictAccountWhenStorageLimitReached'] ?? true;
+
   Future<void> init(Alfred app) async {
     alwaysAllowedScopes = config['alwaysAllowedScopes']?.cast<String>() ??
         defaultAlwaysAllowedScopes;
@@ -368,13 +371,27 @@ class AccountsService {
 
       final stats = await getStatsForAccount(auth.account!.id);
 
+      final tier = tiers[auth.account!.tier]!;
+
+      final bool quotaExceeded =
+          stats['total']['usedStorage'] > tier['storageLimit'];
+
+      bool isRestricted = auth.account!.isRestricted;
+
+      if (quotaExceeded && !isRestricted) {
+        if (restrictAccountWhenStorageLimitReached) {
+          await setRestrictedStatus(auth.account!.id, true);
+          isRestricted = true;
+        }
+      }
+
       return {
         "email": auth.account!.email,
         "createdAt": auth.account!.createdAt,
-        "quotaExceeded": false,
+        "quotaExceeded": quotaExceeded,
         "emailConfirmed": false,
-        "isRestricted": auth.account!.isRestricted,
-        "tier": tiers[auth.account!.tier],
+        "isRestricted": isRestricted,
+        "tier": tier,
         "stats": stats,
       };
     });
