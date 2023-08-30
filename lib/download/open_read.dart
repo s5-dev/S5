@@ -97,6 +97,13 @@ Stream<List<int>> openRead({
   int chunk = (start / chunkSize).floor();
   int offset = start % chunkSize;
 
+  final totalEncSize = isEncrypted
+      ? (((totalSize / chunkSize).floor() * (chunkSize + 16)) +
+          (totalSize % chunkSize) +
+          16 +
+          encryptionMetadata.padding)
+      : totalSize;
+
   final downloadedEncData = <int>[];
 
   StorageLocationProvider? storageLocationProvider;
@@ -254,7 +261,7 @@ Stream<List<int>> openRead({
 
               if (endPos < (startByte + chunkSize)) {
                 if ((startByte + chunkSize) > totalSize) {
-                  final end = min(totalSize, encStartByte + encChunkSize * 64);
+                  final end = min(totalEncSize, encStartByte + encChunkSize * 64);
                   rangeHeader = 'bytes=$encStartByte-${end - 1}';
                 } else {
                   rangeHeader =
@@ -279,7 +286,7 @@ Stream<List<int>> openRead({
                     encChunkSize * (downloadUntilChunkExclusive - chunk);
 
                 if ((encStartByte + length) > totalSize) {
-                  final end = min(totalSize, encStartByte + encChunkSize * 64);
+                  final end = min(totalEncSize, encStartByte + encChunkSize * 64);
                   rangeHeader = 'bytes=$encStartByte-${end - 1}';
                 } else {
                   rangeHeader =
@@ -312,7 +319,7 @@ Stream<List<int>> openRead({
             final isLastChunk = (startByte + chunkSize) > (totalSize);
 
             if (isLastChunk) {
-              while (downloadedEncData.length < (totalSize - encStartByte)) {
+              while (downloadedEncData.length < (totalEncSize - encStartByte)) {
                 if (hasDownloadError) throw 'Download HTTP request failed';
                 await Future.delayed(Duration(milliseconds: 10));
               }
