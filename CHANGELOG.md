@@ -1,3 +1,13 @@
+## 0.13.1
+
+- Admin API: more account features (create, delete, update tier, api keys, ...)
+- Updated admin web app
+- New setting `restrictAccountWhenStorageLimitReached`, enabled by default
+- Add optional log file config option
+- Improve error message for restricted accounts
+- Check for duplicate "email" when creating account
+- Support passing admin api key as query parameter
+
 ## 0.12.0
 
 - **BREAKING** [sia/renterd] Change object prefix to `/s5/`
