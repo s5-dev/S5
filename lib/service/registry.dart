@@ -110,10 +110,11 @@ class RegistryService {
   }
 
   final streams = <Multihash, StreamController<SignedRegistryEntry>>{};
+  final subs = <Multihash>{};
 
   Future<SignedRegistryEntry?> get(Uint8List pk) async {
     final key = Multihash(pk);
-    if (streams.containsKey(key)) {
+    if (subs.contains(key)) {
       node.logger.verbose('[registry] get (subbed) $key');
       final res = getFromDB(pk);
       if (res != null) {
@@ -124,6 +125,7 @@ class RegistryService {
       return getFromDB(pk);
     } else {
       sendRegistryRequest(pk);
+      subs.add(key);
       streams[key] = StreamController<SignedRegistryEntry>.broadcast();
       if (getFromDB(pk) == null) {
         node.logger.verbose('[registry] get (clean) $key');
