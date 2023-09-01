@@ -126,7 +126,9 @@ class RegistryService {
     } else {
       sendRegistryRequest(pk);
       subs.add(key);
-      streams[key] = StreamController<SignedRegistryEntry>.broadcast();
+      if (!streams.containsKey(key)) {
+        streams[key] = StreamController<SignedRegistryEntry>.broadcast();
+      }
       if (getFromDB(pk) == null) {
         node.logger.verbose('[registry] get (clean) $key');
         for (int i = 0; i < 200; i++) {
