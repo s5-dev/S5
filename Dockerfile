@@ -7,6 +7,7 @@ RUN \
     && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
     ca-certificates \
+    libsqlite3-0 \
     libsqlite3-dev \
     zip \
     git \
