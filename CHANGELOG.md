@@ -1,3 +1,9 @@
+## 0.13.2
+
+- Fix encrypted streaming bug
+- Fix outdated registry reads bug
+- Add missing dependency to Dockerfile
+
 ## 0.13.1
 
 - Admin API: more account features (create, delete, update tier, api keys, ...)
