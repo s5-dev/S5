@@ -41,7 +41,8 @@ RUN dart pub get \
     && chmod +x bin/s5_server \
     && mkdir -p /runtime/lib \
     && ldd bin/s5_server | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' /runtime/lib/ \
-    && ldd librust.so | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' /runtime/lib/
+    && ldd librust.so | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' /runtime/lib/ \
+    && find / -name libsqlite3.so | xargs -I '{}' cp -v '{}' /runtime/lib/
 
 # Copy build to fresh image because without doing this the image
 # is like 5.6GB lol (it's now like 22MB!)
