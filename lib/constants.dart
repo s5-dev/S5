@@ -1,5 +1,5 @@
 // ! S5 node version
-const nodeVersion = '0.13.2';
+const nodeVersion = '0.13.3';
 
 // ! default chunk size for hashes
 const defaultChunkSize = 256 * 1024;
