@@ -104,6 +104,7 @@ Map<String, ObjectStore> createStoresFromConfig(
           : siaConfig['busApiUrl'],
       apiPassword: siaConfig['apiPassword']!,
       downloadUrls: [siaConfig['downloadUrl']!],
+      bucket: siaConfig['bucket'] ?? 'default',
       httpClient: httpClient,
     );
   }

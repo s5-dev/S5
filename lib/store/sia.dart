@@ -14,6 +14,7 @@ class SiaObjectStore extends ObjectStore {
   final String busApiUrl;
   final String workerApiUrl;
   final String apiPassword;
+  final String bucket;
   final Client httpClient;
 
   final List<String> downloadUrls;
@@ -24,7 +25,9 @@ class SiaObjectStore extends ObjectStore {
   final availableBaoOutboardHashes = <Multihash>{};
 
   Uri _getApiUri(String path) {
-    return Uri.parse('$workerApiUrl$path');
+    return Uri.parse('$workerApiUrl$path').replace(queryParameters: {
+      'bucket': bucket,
+    });
   }
 
   @override
@@ -62,6 +65,7 @@ class SiaObjectStore extends ObjectStore {
     required this.apiPassword,
     required this.httpClient,
     required this.downloadUrls,
+    required this.bucket,
   }) {
     _headers = {
       'Authorization': 'Basic ${base64Url.encode(utf8.encode(':$apiPassword'))}'
