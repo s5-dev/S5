@@ -1,3 +1,7 @@
+## 0.13.4
+
+- [sia/renterd] add bucket support
+
 ## 0.13.3
 
 - Fix Docker build to include libsqlite3.so
