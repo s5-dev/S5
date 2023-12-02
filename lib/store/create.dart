@@ -6,6 +6,7 @@ import 'package:minio/minio.dart';
 import 'package:s5_server/node.dart';
 
 import 'base.dart';
+import 'fs_provider.dart';
 import 'ipfs.dart';
 import 'local.dart';
 import 'pixeldrain.dart';
@@ -22,6 +23,8 @@ Map<String, ObjectStore> createStoresFromConfig(
   final siaConfig = config['store']?['sia'];
   final pixeldrainConfig = config['store']?['pixeldrain'];
   final ipfsConfig = config['store']?['ipfs'];
+  final fileSystemConfig = config['store']?['fs'];
+
   final arweaveConfig = config['store']?['arweave'];
   final estuaryConfig = config['store']?['estuary'];
 
@@ -94,6 +97,13 @@ Map<String, ObjectStore> createStoresFromConfig(
         httpClient: client,
       );
     } */
+
+  if (fileSystemConfig != null) {
+    stores['fs'] = FileSystemProviderObjectStore(node, localDirectories: [
+      // TODO Configure directories
+      Directory('/public'),
+    ]);
+  }
 
   if (siaConfig != null) {
     final String workerApiUrl = siaConfig['workerApiUrl']!;
