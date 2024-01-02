@@ -1,3 +1,10 @@
+## 0.13.5
+
+- Added new FileSystemProvider
+- Added public domain warning
+- Fixed s3 endpoint url handling
+- Switched to Cloudflare DNS
+
 ## 0.13.4
 
 - [sia/renterd] add bucket support
