@@ -144,6 +144,12 @@ class S5Node {
         crypto: crypto,
       );
       await accounts!.init(httpAPIServer.app);
+    } else {
+      if (config['http']?['api']?['domain'] != null) {
+        logger.warn(
+          'It looks like you have a public domain, but the accounts system is not enabled. This means that anyone could upload files to your node, so enable the accounts system if you don\'t want that.',
+        );
+      }
     }
 
     await httpAPIServer.start(cachePath);
@@ -293,13 +299,16 @@ class S5Node {
   Future<List<String>> getS5EntriesForName(String name) async {
     final res = await client.get(
       Uri.https(
-        'dns0.eu',
+        'cloudflare-dns.com',
         '/dns-query',
         {
           'name': name,
           'type': 'TXT',
         },
       ),
+      headers: {
+        'accept': 'application/dns-json',
+      },
     );
 
     final List<String> results = json
