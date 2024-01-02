@@ -31,9 +31,13 @@ Map<String, ObjectStore> createStoresFromConfig(
   final stores = <String, ObjectStore>{};
 
   if (s3Config != null) {
+    final String endpointUrl = s3Config['endpointUrl'] ?? s3Config['endpoint'];
+    final uri = Uri.tryParse(endpointUrl);
     stores['s3'] = S3ObjectStore(
       Minio(
-        endPoint: s3Config['endpoint'],
+        useSSL: (uri?.scheme ?? 'https') == 'https',
+        endPoint: uri?.host ?? endpointUrl,
+        port: uri?.port,
         accessKey: s3Config['accessKey'],
         secretKey: s3Config['secretKey'],
       ),
@@ -99,10 +103,16 @@ Map<String, ObjectStore> createStoresFromConfig(
     } */
 
   if (fileSystemConfig != null) {
-    stores['fs'] = FileSystemProviderObjectStore(node, localDirectories: [
-      // TODO Configure directories
-      Directory('/public'),
-    ]);
+    stores['fs'] = FileSystemProviderObjectStore(
+      node,
+      localDirectories: [
+        for (final path in fileSystemConfig['directories']) Directory(path),
+      ],
+      httpPort: fileSystemConfig['httpPort'] ?? 23432,
+      httpBind: fileSystemConfig['httpBind'] ?? '0.0.0.0',
+      externalDownloadUrl:
+          fileSystemConfig['externalDownloadUrl'] ?? 'http://localhost:23432',
+    );
   }
 
   if (siaConfig != null) {

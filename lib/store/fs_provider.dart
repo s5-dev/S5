@@ -171,12 +171,18 @@ class FileSystemProviderObjectStore extends ObjectStore {
   @override
   final uploadsSupported = false;
 
-  // TODO Make port configurable
-  final httpServerConfig = {
-    'port': 23432,
-  };
+  final String externalDownloadUrl;
 
-  FileSystemProviderObjectStore(this.node, {required this.localDirectories}) {
+  final int httpPort;
+  final String httpBind;
+
+  FileSystemProviderObjectStore(
+    this.node, {
+    required this.localDirectories,
+    required this.httpPort,
+    required this.httpBind,
+    required this.externalDownloadUrl,
+  }) {
     final app = Alfred();
 
     app.all('*', cors());
@@ -186,11 +192,13 @@ class FileSystemProviderObjectStore extends ObjectStore {
       if (metadataHashes.containsKey(hash)) {
         res.add(metadataHashes[hash]!);
         res.close();
+      } else if (fileHashes.containsKey(hash)) {
+        return File(fileHashes[hash]!);
       }
     });
     app.listen(
-      httpServerConfig['port']!,
-      httpServerConfig['bind'] ?? '0.0.0.0',
+      httpPort,
+      httpBind,
     );
   }
 
@@ -210,9 +218,9 @@ class FileSystemProviderObjectStore extends ObjectStore {
   Future<StorageLocation> provide(Multihash hash, List<int> types) async {
     return StorageLocation(
       3,
-      // TODO Specify external URL and increase expiry
-      ['http://localhost:23432/hash/${hash.toBase64Url()}'],
-      calculateExpiry(Duration(seconds: 30)),
+      // TODO Increase expiry
+      ['$externalDownloadUrl/hash/${hash.toBase64Url()}'],
+      calculateExpiry(Duration(minutes: 10)),
     );
   }
 
