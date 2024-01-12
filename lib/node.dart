@@ -662,6 +662,8 @@ class S5Node {
         metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
       } else if (cid.type == cidTypeMetadataWebApp) {
         metadata = deserializeWebAppMetadata(bytes);
+      } else if (cid.type == cidTypeMetadataDirectory) {
+        metadata = DirectoryMetadata.deserizalize(bytes);
       } else if (cid.type == cidTypeBridge) {
         metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
       } else {
