@@ -1,3 +1,11 @@
+## 0.14.1
+
+- Updated default list of initial p2p peers
+- The s3 store now supports `http://` endpoints
+- Added `DirectoryMetadata` support
+- Moved all web-compatible parts of the S5 Node implementation to the lib5 package
+- Some other bug fixes and p2p improvements (see lib5)
+
 ## 0.13.5
 
 - Added new FileSystemProvider
