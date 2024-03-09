@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:lib5/lib5.dart';
+import 'package:lib5/util.dart';
 
 import 'package:s5_server/rust/bridge_definitions.dart';
 
@@ -105,5 +106,12 @@ class RustCryptoImplementation extends CryptoImplementation {
       nonce: nonce,
       plaintext: plaintext,
     );
+  }
+
+  @override
+  Future<Uint8List> hashBlake3File(
+      {required int size, required OpenReadFunction openRead}) {
+    // TODO: implement hashBlake3File
+    throw UnimplementedError();
   }
 }

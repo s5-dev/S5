@@ -25,6 +25,11 @@ class PixeldrainObjectStore extends ObjectStore {
   final availableHashes = <Multihash, String>{};
   final availableBaoOutboardHashes = <Multihash, String>{};
 
+  @override
+  Future<Iterable<Multihash>> getStoredHashes() async {
+    return availableHashes.keys;
+  }
+
   Uri _getApiUri(String path) {
     return Uri.parse('https://pixeldrain.com/api$path');
   }

@@ -1,20 +1,12 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:belatuk_range_header/belatuk_range_header.dart';
-import 'package:http/http.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
-import 'package:path/path.dart';
+
 import 'package:s5_server/download/open_read.dart';
-
-import 'package:s5_server/download/uri_provider.dart';
-import 'package:s5_server/logger/base.dart';
 import 'package:s5_server/node.dart';
-
-final httpClient = Client();
 
 Future handleChunkedFile(
   HttpRequest req,

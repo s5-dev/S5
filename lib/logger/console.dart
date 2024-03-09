@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'package:tint/tint.dart';
 
-import 'base.dart';
+import 'package:lib5/util.dart';
+import 'package:tint/tint.dart';
 
 class ConsoleLogger extends Logger {
   final String prefix;

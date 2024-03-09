@@ -35,9 +35,9 @@ Map<String, ObjectStore> createStoresFromConfig(
     final uri = Uri.tryParse(endpointUrl);
     stores['s3'] = S3ObjectStore(
       Minio(
-        useSSL: (uri?.scheme ?? 'https') == 'https',
-        endPoint: uri?.host ?? endpointUrl,
-        port: uri?.port,
+        useSSL: !endpointUrl.startsWith('http://'),
+        endPoint: (uri?.host ?? '').isEmpty ? endpointUrl : uri!.host,
+        port: (uri?.port ?? 0) == 0 ? null : uri?.port,
         accessKey: s3Config['accessKey'],
         secretKey: s3Config['secretKey'],
       ),

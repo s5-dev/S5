@@ -7,7 +7,7 @@ environment:
   sdk: ^3.0.0
 
 dependencies:
-  lib5: ^0.1.0
+  lib5: ^0.2.0
   alfred:
     git: https://github.com/redsolver/alfred.git
   belatuk_range_header: ^6.0.0

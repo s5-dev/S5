@@ -3,13 +3,15 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+// TODO Move this to lib5 (with generic kv FS abstraction/Stream)
+
 import 'package:http/http.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
+import 'package:lib5/node.dart';
 import 'package:lib5/util.dart';
 import 'package:path/path.dart';
 
-import 'package:s5_server/download/uri_provider.dart';
 import 'package:s5_server/node.dart';
 
 final httpClient = Client();

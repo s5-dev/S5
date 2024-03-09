@@ -7,7 +7,7 @@ import 'package:lib5/lib5.dart';
 import 'package:lib5/util.dart';
 
 import 'package:s5_server/accounts/account.dart';
-import 'package:s5_server/logger/base.dart';
+import 'package:lib5/util.dart';
 import 'package:s5_server/service/sql.dart';
 import 'package:s5_msgpack/s5_msgpack.dart';
 
@@ -550,6 +550,7 @@ WHERE object_hash = ?''',
 
   Future<void> deleteAccount(int id) async {
     await sql.db.delete('Pin', where: 'account_id = ?', whereArgs: [id]);
+    // TODO Delete files using deleteObjectPin
     await sql.db.delete('AuthToken', where: 'account_id = ?', whereArgs: [id]);
     await sql.db.delete('PublicKey', where: 'account_id = ?', whereArgs: [id]);
     await sql.db.delete('Account', where: 'id = ?', whereArgs: [id]);

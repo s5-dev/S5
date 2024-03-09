@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:filesize/filesize.dart';
-import 'package:s5_server/logger/base.dart';
+import 'package:lib5/util.dart';
 
 class CacheCleaner {
   final Directory cacheDirectory;

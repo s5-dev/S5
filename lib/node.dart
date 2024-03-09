@@ -7,88 +7,61 @@ import 'dart:typed_data';
 import 'package:cancellation_token/cancellation_token.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart';
-import 'package:s5_msgpack/s5_msgpack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
 import 'package:pool/pool.dart';
-import 'package:tint/tint.dart';
+import 'package:s5_msgpack/s5_msgpack.dart';
 
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
+import 'package:lib5/node.dart';
 import 'package:lib5/util.dart';
 
 import 'accounts/account.dart';
 import 'constants.dart';
 import 'db/hive_key_value_db.dart';
-import 'download/uri_provider.dart';
 import 'http_api/http_api.dart';
-import 'http_api/serve_chunked_file.dart';
-import 'logger/base.dart';
 import 'rust/bridge_definitions.dart';
 import 'service/accounts.dart';
 import 'service/cache_cleaner.dart';
 import 'service/p2p.dart';
-import 'service/registry.dart';
-import 'store/base.dart';
 import 'store/create.dart';
 import 'store/merge.dart';
 
-class S5Node {
-  final Map<String, dynamic> config;
-
-  final Logger logger;
+class S5Node extends S5NodeBase {
   final Rust rust;
 
-  CryptoImplementation crypto;
-
-  S5Node(
-    this.config, {
-    required this.logger,
+  S5Node({
+    required super.config,
+    required super.logger,
+    required super.crypto,
     required this.rust,
-    required this.crypto,
   });
 
   late final String cachePath;
 
-  final client = Client();
-
-  late final KeyValueDB objectsBox;
-
   final rawFileUploadPool = Pool(16);
-
-  final metadataCache = <Multihash, Metadata>{};
 
   ObjectStore? store;
   late bool exposeStore;
 
   AccountsService? accounts;
 
-  late final RegistryService registry;
-  late final P2PService p2p;
-
+  @override
   Future<void> start() async {
     if (config['database']?['path'] != null) {
       Hive.init(config['database']['path']);
     }
 
-    objectsBox = HiveKeyValueDB(await Hive.openBox('s5-object-cache'));
-
-    p2p = P2PService(this);
-
-    p2p.nodeKeyPair = await crypto.newKeyPairEd25519(
-      seed: base64UrlNoPaddingDecode(
-        (config['keypair']['seed'] as String).replaceAll('=', ''),
+    await init(
+      blobDB: HiveKeyValueDB(
+        await Hive.openBox('s5-object-cache'),
       ),
+      registryDB: HiveKeyValueDB(await Hive.openBox('s5-registry-db')),
+      streamDB: HiveKeyValueDB(await Hive.openBox('s5-stream-db')),
+      nodesDB: HiveKeyValueDB(await Hive.openBox('s5-nodes')),
+      p2pService: NativeP2PService(this),
     );
-
-    await p2p.init();
-
-    logger.info('${'NODE ID'.bold()}: ${p2p.localNodeId.toString().green()}');
-
-    logger.info('');
-
-    registry = RegistryService(this);
-    await registry.init();
 
     cachePath = config['cache']['path']!;
 
@@ -214,7 +187,7 @@ class S5Node {
       logger.verbose('[try] ${dlUri.location.bytesUrl}');
 
       try {
-        final res = await client
+        final res = await httpClient
             .get(Uri.parse(dlUri.location.bytesUrl))
             .timeout(Duration(seconds: 30)); // TODO Adjust timeout
 
@@ -297,7 +270,7 @@ class S5Node {
 
   // TODO Use Lume DNS
   Future<List<String>> getS5EntriesForName(String name) async {
-    final res = await client.get(
+    final res = await httpClient.get(
       Uri.https(
         'cloudflare-dns.com',
         '/dns-query',
@@ -323,51 +296,6 @@ class S5Node {
         .toList();
   }
 
-  Map<int, Map<NodeID, Map<int, dynamic>>> readStorageLocationsFromDB(
-    Multihash hash,
-  ) {
-    final Map<int, Map<NodeID, Map<int, dynamic>>> map = {};
-    final bytes = objectsBox.get(hash.fullBytes);
-    if (bytes == null) {
-      return map;
-    }
-    final unpacker = Unpacker(bytes);
-    final mapLength = unpacker.unpackMapLength();
-    for (int i = 0; i < mapLength; i++) {
-      final type = unpacker.unpackInt();
-      map[type!] = {};
-      final mapLength = unpacker.unpackMapLength();
-      for (int j = 0; j < mapLength; j++) {
-        final nodeId = unpacker.unpackBinary();
-        map[type]![NodeID(nodeId)] = unpacker.unpackMap().cast<int, dynamic>();
-      }
-    }
-    return map;
-  }
-
-  void addStorageLocation(
-    Multihash hash,
-    NodeID nodeId,
-    StorageLocation location, {
-    Uint8List? message,
-  }) async {
-    final map = readStorageLocationsFromDB(hash);
-
-    map[location.type] ??= {};
-
-    map[location.type]![nodeId] = {
-      1: location.parts,
-      // 2: location.binaryParts,
-      3: location.expiry,
-      4: message,
-    };
-
-    objectsBox.set(
-      hash.fullBytes,
-      (Packer()..pack(map)).takeBytes(),
-    );
-  }
-
   Future<AuthResponse> checkAuth(
     HttpRequest req,
     String scope, {
@@ -390,35 +318,7 @@ class S5Node {
     return res;
   }
 
-  Map<NodeID, StorageLocation> getCachedStorageLocations(
-    Multihash hash,
-    List<int> types,
-  ) {
-    final locations = <NodeID, StorageLocation>{};
-
-    final map = readStorageLocationsFromDB(hash);
-    if (map.isEmpty) {
-      return {};
-    }
-
-    final ts = (DateTime.now().millisecondsSinceEpoch / 1000).round();
-
-    for (final type in types) {
-      if (!map.containsKey(type)) continue;
-      for (final e in map[type]!.entries) {
-        if (e.value[3] < ts) {
-        } else {
-          locations[e.key] = StorageLocation(
-            type,
-            e.value[1].cast<String>(),
-            e.value[3],
-          )..providerMessage = e.value[4];
-        }
-      }
-    }
-    return locations;
-  }
-
+  @override
   Future<void> fetchHashLocally(Multihash hash, List<int> types) async {
     if (store != null) {
       if (await store!.canProvide(hash, types)) {
@@ -432,78 +332,6 @@ class S5Node {
         );
       }
     }
-  }
-
-  Future<CID> uploadMemoryDirectory(
-    Map<String, Uint8List> paths, {
-    String? name,
-    List<String>? tryFiles,
-    Map<int, String>? errorPages,
-  }) async {
-    final p = Packer();
-
-    p.packInt(metadataMagicByte);
-    p.packInt(metadataTypeWebApp);
-
-    p.packListLength(5);
-
-    p.packString(name);
-
-    p.packListLength(tryFiles?.length ?? 0);
-
-    tryFiles?.sort();
-
-    for (final path in tryFiles ?? []) {
-      p.packString(path);
-    }
-
-    p.packMapLength(errorPages?.length ?? 0);
-
-    for (final e in errorPages?.entries.toList() ?? <MapEntry>[]) {
-      p.packInt(e.key);
-      p.packString(e.value);
-    }
-
-    p.packListLength(paths.length);
-
-    final cids = <String, CID>{};
-    final futures = <Future>[];
-
-    Future<void> _upload(String path) async {
-      cids[path] = await rawFileUploadPool.withResource(
-        () => uploadRawFile(
-          paths[path]!,
-        ),
-      );
-    }
-
-    for (final path in paths.keys) {
-      futures.add(_upload(path));
-    }
-    await Future.wait(futures);
-
-    final pathKeys = paths.keys.toList();
-
-    pathKeys.sort();
-
-    for (final path in pathKeys) {
-      final bytes = paths[path]!;
-      p.packListLength(3);
-      p.packString(path);
-      p.packBinary(cids[path]!.toBytes());
-      p.packString(
-        lookupMimeType(
-          path.split('/').last,
-          headerBytes: bytes.sublist(0, min(32, bytes.length)),
-        ),
-      );
-    }
-
-    p.packMapLength(0);
-
-    final cid = await uploadRawFile(p.takeBytes());
-
-    return CID(cidTypeMetadataWebApp, cid.hash);
   }
 
   Future<void> deleteFile(CID cid) async {
@@ -588,7 +416,7 @@ class S5Node {
 
       final request = Request('GET', Uri.parse(dlUri.location.bytesUrl));
 
-      final response = await client.send(request);
+      final response = await httpClient.send(request);
 
       if (response.statusCode != 200) {
         throw 'HTTP ${response.statusCode}';
@@ -648,32 +476,7 @@ class S5Node {
     }
   }
 
-  Future<Metadata> getMetadataByCID(CID cid) async {
-    final hash = cid.hash;
-
-    late final Metadata metadata;
-
-    if (metadataCache.containsKey(hash)) {
-      metadata = metadataCache[hash]!;
-    } else {
-      final bytes = await downloadBytesByHash(hash);
-
-      if (cid.type == cidTypeMetadataMedia) {
-        metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
-      } else if (cid.type == cidTypeMetadataWebApp) {
-        metadata = deserializeWebAppMetadata(bytes);
-      } else if (cid.type == cidTypeMetadataDirectory) {
-        metadata = DirectoryMetadata.deserizalize(bytes);
-      } else if (cid.type == cidTypeBridge) {
-        metadata = await deserializeMediaMetadata(bytes, crypto: crypto);
-      } else {
-        throw 'Unsupported metadata format';
-      }
-      metadataCache[hash] = metadata;
-    }
-    return metadata;
-  }
-
+  @override
   Future<CID> uploadRawFile(Uint8List data) async {
     if (data.length > 32 * 1024 * 1024) {
       throw 'This API only supports a maximum size of 32 MiB';
@@ -785,6 +588,79 @@ class S5Node {
       hash,
       size: size,
     );
+  }
+
+  // TODO Move this to lib5
+  Future<CID> uploadMemoryDirectory(
+    Map<String, Uint8List> paths, {
+    String? name,
+    List<String>? tryFiles,
+    Map<int, String>? errorPages,
+  }) async {
+    final p = Packer();
+
+    p.packInt(metadataMagicByte);
+    p.packInt(metadataTypeWebApp);
+
+    p.packListLength(5);
+
+    p.packString(name);
+
+    p.packListLength(tryFiles?.length ?? 0);
+
+    tryFiles?.sort();
+
+    for (final path in tryFiles ?? []) {
+      p.packString(path);
+    }
+
+    p.packMapLength(errorPages?.length ?? 0);
+
+    for (final e in errorPages?.entries.toList() ?? <MapEntry>[]) {
+      p.packInt(e.key);
+      p.packString(e.value);
+    }
+
+    p.packListLength(paths.length);
+
+    final cids = <String, CID>{};
+    final futures = <Future>[];
+
+    Future<void> _upload(String path) async {
+      cids[path] = await rawFileUploadPool.withResource(
+        () => uploadRawFile(
+          paths[path]!,
+        ),
+      );
+    }
+
+    for (final path in paths.keys) {
+      futures.add(_upload(path));
+    }
+    await Future.wait(futures);
+
+    final pathKeys = paths.keys.toList();
+
+    pathKeys.sort();
+
+    for (final path in pathKeys) {
+      final bytes = paths[path]!;
+      p.packListLength(3);
+      p.packString(path);
+      p.packBinary(cids[path]!.toBytes());
+      p.packString(
+        lookupMimeType(
+          path.split('/').last,
+          headerBytes: bytes.sublist(0, min(32, bytes.length)),
+        ),
+      );
+    }
+
+    p.packMapLength(0);
+
+    final cid = await uploadRawFile(p.takeBytes());
+
+    return CID(cidTypeMetadataWebApp, cid.hash);
   }
 
   void _copyTo(Uint8List list, int offset, Uint8List input) {

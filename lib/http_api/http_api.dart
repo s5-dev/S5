@@ -4,26 +4,23 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:alfred/alfred.dart';
-// ignore: implementation_imports
-import 'package:alfred/src/type_handlers/websocket_type_handler.dart';
 import 'package:base_codecs/base_codecs.dart';
 import 'package:http/http.dart';
 import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
+import 'package:lib5/node.dart';
 import 'package:lib5/util.dart';
-import 'package:s5_msgpack/s5_msgpack.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart';
-import 'package:s5_server/accounts/account.dart';
 
+import 'package:s5_server/accounts/account.dart';
 import 'package:s5_server/constants.dart';
-import 'package:s5_server/download/uri_provider.dart';
 import 'package:s5_server/http_api/admin.dart';
 import 'package:s5_server/node.dart';
 import 'package:s5_server/service/accounts.dart';
 import 'package:s5_server/service/p2p.dart';
-import 'package:s5_server/util/uid.dart';
 import 'package:s5_server/util/multipart.dart';
+import 'package:s5_server/util/uid.dart';
 import 'serve_chunked_file.dart';
 
 class HttpAPIServer {
@@ -415,7 +412,7 @@ class HttpAPIServer {
         request.headers[h.key] = h.value;
       }
 
-      final response = await httpClient.send(request);
+      final response = await node.httpClient.send(request);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw 'HTTP ${response.statusCode}';
@@ -604,7 +601,7 @@ class HttpAPIServer {
         throw 'This endpoint does not support resolver CIDs yet';
       }
 
-      final metadata = await node.getMetadataByCID(cid);
+      final metadata = await node.downloadMetadata(cid);
 
       if (cid.type != cidTypeBridge) {
         setUnlimitedCacheHeader(res);
@@ -795,7 +792,7 @@ class HttpAPIServer {
       res.statusCode = 204;
     });
 
-    app.get('/s5/registry/subscription', (req, res) async {
+/*     app.get('/s5/registry/subscription', (req, res) async {
       final auth = await node.checkAuth(req, 's5/registry/subscription');
       if (auth.denied) return res.unauthorized(auth);
 
@@ -810,7 +807,7 @@ class HttpAPIServer {
             );
 
             stream.map((sre) {
-              return node.registry.serializeRegistryEntry(sre);
+              return sre.serialize();
             }).listen((event) {
               webSocket.add(event);
             });
@@ -820,7 +817,7 @@ class HttpAPIServer {
           // TODO Clean up subscriptions
         },
       );
-    });
+    }); */
 
     final authorization = node.config['http']?['api']?['authorization'];
 
@@ -963,7 +960,7 @@ class HttpAPIServer {
             cid = CID.fromBytes(res.data.sublist(1));
           }
 
-          final metadata = await node.getMetadataByCID(cid) as WebAppMetadata;
+          final metadata = await node.downloadMetadata(cid) as WebAppMetadata;
 
           WebAppMetadataFileReference? servedFile;
 

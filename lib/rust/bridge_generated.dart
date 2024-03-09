@@ -8,34 +8,22 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'package:uuid/uuid.dart';
-
-import 'dart:convert';
-import 'dart:async';
-import 'package:meta/meta.dart';
-import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
-import 'package:uuid/uuid.dart';
-
-import 'dart:ffi' as ffi;
+import 'bridge_generated.io.dart' if (dart.library.html) 'bridge_generated.web.dart';
 
 class RustImpl implements Rust {
   final RustPlatform _platform;
   factory RustImpl(ExternalLibrary dylib) => RustImpl.raw(RustPlatform(dylib));
 
   /// Only valid on web/WASM platforms.
-  factory RustImpl.wasm(FutureOr<WasmModule> module) =>
-      RustImpl(module as ExternalLibrary);
+  factory RustImpl.wasm(FutureOr<WasmModule> module) => RustImpl(module as ExternalLibrary);
   RustImpl.raw(this._platform);
   Future<Uint8List> encryptXchacha20Poly1305(
-      {required Uint8List key,
-      required Uint8List nonce,
-      required Uint8List plaintext,
-      dynamic hint}) {
+      {required Uint8List key, required Uint8List nonce, required Uint8List plaintext, dynamic hint}) {
     var arg0 = _platform.api2wire_uint_8_list(key);
     var arg1 = _platform.api2wire_uint_8_list(nonce);
     var arg2 = _platform.api2wire_uint_8_list(plaintext);
     return _platform.executeNormal(FlutterRustBridgeTask(
-      callFfi: (port_) => _platform.inner
-          .wire_encrypt_xchacha20poly1305(port_, arg0, arg1, arg2),
+      callFfi: (port_) => _platform.inner.wire_encrypt_xchacha20poly1305(port_, arg0, arg1, arg2),
       parseSuccessData: _wire2api_uint_8_list,
       constMeta: kEncryptXchacha20Poly1305ConstMeta,
       argValues: [key, nonce, plaintext],
@@ -43,23 +31,18 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kEncryptXchacha20Poly1305ConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kEncryptXchacha20Poly1305ConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "encrypt_xchacha20poly1305",
         argNames: ["key", "nonce", "plaintext"],
       );
 
   Future<Uint8List> decryptXchacha20Poly1305(
-      {required Uint8List key,
-      required Uint8List nonce,
-      required Uint8List ciphertext,
-      dynamic hint}) {
+      {required Uint8List key, required Uint8List nonce, required Uint8List ciphertext, dynamic hint}) {
     var arg0 = _platform.api2wire_uint_8_list(key);
     var arg1 = _platform.api2wire_uint_8_list(nonce);
     var arg2 = _platform.api2wire_uint_8_list(ciphertext);
     return _platform.executeNormal(FlutterRustBridgeTask(
-      callFfi: (port_) => _platform.inner
-          .wire_decrypt_xchacha20poly1305(port_, arg0, arg1, arg2),
+      callFfi: (port_) => _platform.inner.wire_decrypt_xchacha20poly1305(port_, arg0, arg1, arg2),
       parseSuccessData: _wire2api_uint_8_list,
       constMeta: kDecryptXchacha20Poly1305ConstMeta,
       argValues: [key, nonce, ciphertext],
@@ -67,8 +50,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kDecryptXchacha20Poly1305ConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kDecryptXchacha20Poly1305ConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "decrypt_xchacha20poly1305",
         argNames: ["key", "nonce", "ciphertext"],
       );
@@ -84,8 +66,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kHashBlake3FileConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kHashBlake3FileConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "hash_blake3_file",
         argNames: ["path"],
       );
@@ -101,8 +82,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kHashBlake3ConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kHashBlake3ConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "hash_blake3",
         argNames: ["input"],
       );
@@ -118,8 +98,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kHashBlake3SyncConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kHashBlake3SyncConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "hash_blake3_sync",
         argNames: ["input"],
       );
@@ -135,8 +114,7 @@ class RustImpl implements Rust {
     var arg2 = _platform.api2wire_uint_8_list(baoOutboardBytes);
     var arg3 = _platform.api2wire_uint_8_list(blake3Hash);
     return _platform.executeNormal(FlutterRustBridgeTask(
-      callFfi: (port_) =>
-          _platform.inner.wire_verify_integrity(port_, arg0, arg1, arg2, arg3),
+      callFfi: (port_) => _platform.inner.wire_verify_integrity(port_, arg0, arg1, arg2, arg3),
       parseSuccessData: _wire2api_u8,
       constMeta: kVerifyIntegrityConstMeta,
       argValues: [chunkBytes, offset, baoOutboardBytes, blake3Hash],
@@ -144,8 +122,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kVerifyIntegrityConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kVerifyIntegrityConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "verify_integrity",
         argNames: ["chunkBytes", "offset", "baoOutboardBytes", "blake3Hash"],
       );
@@ -161,8 +138,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kHashBaoFileConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kHashBaoFileConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "hash_bao_file",
         argNames: ["path"],
       );
@@ -178,8 +154,7 @@ class RustImpl implements Rust {
     ));
   }
 
-  FlutterRustBridgeTaskConstMeta get kHashBaoMemoryConstMeta =>
-      const FlutterRustBridgeTaskConstMeta(
+  FlutterRustBridgeTaskConstMeta get kHashBaoMemoryConstMeta => const FlutterRustBridgeTaskConstMeta(
         debugName: "hash_bao_memory",
         argNames: ["bytes"],
       );
@@ -191,8 +166,7 @@ class RustImpl implements Rust {
 
   BaoResult _wire2api_bao_result(dynamic raw) {
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
     return BaoResult(
       hash: _wire2api_uint_8_list(arr[0]),
       outboard: _wire2api_uint_8_list(arr[1]),
@@ -216,328 +190,3 @@ int api2wire_u8(int raw) {
 }
 
 // Section: finalizer
-
-class RustPlatform extends FlutterRustBridgeBase<RustWire> {
-  RustPlatform(ffi.DynamicLibrary dylib) : super(RustWire(dylib));
-
-// Section: api2wire
-
-  @protected
-  ffi.Pointer<wire_uint_8_list> api2wire_String(String raw) {
-    return api2wire_uint_8_list(utf8.encoder.convert(raw));
-  }
-
-  @protected
-  int api2wire_u64(int raw) {
-    return raw;
-  }
-
-  @protected
-  ffi.Pointer<wire_uint_8_list> api2wire_uint_8_list(Uint8List raw) {
-    final ans = inner.new_uint_8_list_0(raw.length);
-    ans.ref.ptr.asTypedList(raw.length).setAll(0, raw);
-    return ans;
-  }
-// Section: finalizer
-
-// Section: api_fill_to_wire
-}
-
-// ignore_for_file: camel_case_types, non_constant_identifier_names, avoid_positional_boolean_parameters, annotate_overrides, constant_identifier_names
-
-// AUTO GENERATED FILE, DO NOT EDIT.
-//
-// Generated by `package:ffigen`.
-// ignore_for_file: type=lint
-
-/// generated by flutter_rust_bridge
-class RustWire implements FlutterRustBridgeWireBase {
-  @internal
-  late final dartApi = DartApiDl(init_frb_dart_api_dl);
-
-  /// Holds the symbol lookup function.
-  final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-      _lookup;
-
-  /// The symbols are looked up in [dynamicLibrary].
-  RustWire(ffi.DynamicLibrary dynamicLibrary) : _lookup = dynamicLibrary.lookup;
-
-  /// The symbols are looked up with [lookup].
-  RustWire.fromLookup(
-      ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-          lookup)
-      : _lookup = lookup;
-
-  void store_dart_post_cobject(
-    ptr,
-  ) {
-    return _store_dart_post_cobject(
-      ptr.address,
-    );
-  }
-
-  late final _store_dart_post_cobjectPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int)>>(
-          'store_dart_post_cobject');
-  late final _store_dart_post_cobject =
-      _store_dart_post_cobjectPtr.asFunction<void Function(int)>();
-
-  Object get_dart_object(
-    int ptr,
-  ) {
-    return _get_dart_object(
-      ptr,
-    );
-  }
-
-  late final _get_dart_objectPtr =
-      _lookup<ffi.NativeFunction<ffi.Handle Function(ffi.UintPtr)>>(
-          'get_dart_object');
-  late final _get_dart_object =
-      _get_dart_objectPtr.asFunction<Object Function(int)>();
-
-  void drop_dart_object(
-    int ptr,
-  ) {
-    return _drop_dart_object(
-      ptr,
-    );
-  }
-
-  late final _drop_dart_objectPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.UintPtr)>>(
-          'drop_dart_object');
-  late final _drop_dart_object =
-      _drop_dart_objectPtr.asFunction<void Function(int)>();
-
-  int new_dart_opaque(
-    Object handle,
-  ) {
-    return _new_dart_opaque(
-      handle,
-    );
-  }
-
-  late final _new_dart_opaquePtr =
-      _lookup<ffi.NativeFunction<ffi.UintPtr Function(ffi.Handle)>>(
-          'new_dart_opaque');
-  late final _new_dart_opaque =
-      _new_dart_opaquePtr.asFunction<int Function(Object)>();
-
-  int init_frb_dart_api_dl(
-    ffi.Pointer<ffi.Void> obj,
-  ) {
-    return _init_frb_dart_api_dl(
-      obj,
-    );
-  }
-
-  late final _init_frb_dart_api_dlPtr =
-      _lookup<ffi.NativeFunction<ffi.IntPtr Function(ffi.Pointer<ffi.Void>)>>(
-          'init_frb_dart_api_dl');
-  late final _init_frb_dart_api_dl = _init_frb_dart_api_dlPtr
-      .asFunction<int Function(ffi.Pointer<ffi.Void>)>();
-
-  void wire_encrypt_xchacha20poly1305(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> key,
-    ffi.Pointer<wire_uint_8_list> nonce,
-    ffi.Pointer<wire_uint_8_list> plaintext,
-  ) {
-    return _wire_encrypt_xchacha20poly1305(
-      port_,
-      key,
-      nonce,
-      plaintext,
-    );
-  }
-
-  late final _wire_encrypt_xchacha20poly1305Ptr = _lookup<
-          ffi.NativeFunction<
-              ffi.Void Function(
-                  ffi.Int64,
-                  ffi.Pointer<wire_uint_8_list>,
-                  ffi.Pointer<wire_uint_8_list>,
-                  ffi.Pointer<wire_uint_8_list>)>>(
-      'wire_encrypt_xchacha20poly1305');
-  late final _wire_encrypt_xchacha20poly1305 =
-      _wire_encrypt_xchacha20poly1305Ptr.asFunction<
-          void Function(int, ffi.Pointer<wire_uint_8_list>,
-              ffi.Pointer<wire_uint_8_list>, ffi.Pointer<wire_uint_8_list>)>();
-
-  void wire_decrypt_xchacha20poly1305(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> key,
-    ffi.Pointer<wire_uint_8_list> nonce,
-    ffi.Pointer<wire_uint_8_list> ciphertext,
-  ) {
-    return _wire_decrypt_xchacha20poly1305(
-      port_,
-      key,
-      nonce,
-      ciphertext,
-    );
-  }
-
-  late final _wire_decrypt_xchacha20poly1305Ptr = _lookup<
-          ffi.NativeFunction<
-              ffi.Void Function(
-                  ffi.Int64,
-                  ffi.Pointer<wire_uint_8_list>,
-                  ffi.Pointer<wire_uint_8_list>,
-                  ffi.Pointer<wire_uint_8_list>)>>(
-      'wire_decrypt_xchacha20poly1305');
-  late final _wire_decrypt_xchacha20poly1305 =
-      _wire_decrypt_xchacha20poly1305Ptr.asFunction<
-          void Function(int, ffi.Pointer<wire_uint_8_list>,
-              ffi.Pointer<wire_uint_8_list>, ffi.Pointer<wire_uint_8_list>)>();
-
-  void wire_hash_blake3_file(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> path,
-  ) {
-    return _wire_hash_blake3_file(
-      port_,
-      path,
-    );
-  }
-
-  late final _wire_hash_blake3_filePtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(ffi.Int64,
-              ffi.Pointer<wire_uint_8_list>)>>('wire_hash_blake3_file');
-  late final _wire_hash_blake3_file = _wire_hash_blake3_filePtr
-      .asFunction<void Function(int, ffi.Pointer<wire_uint_8_list>)>();
-
-  void wire_hash_blake3(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> input,
-  ) {
-    return _wire_hash_blake3(
-      port_,
-      input,
-    );
-  }
-
-  late final _wire_hash_blake3Ptr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(
-              ffi.Int64, ffi.Pointer<wire_uint_8_list>)>>('wire_hash_blake3');
-  late final _wire_hash_blake3 = _wire_hash_blake3Ptr
-      .asFunction<void Function(int, ffi.Pointer<wire_uint_8_list>)>();
-
-  WireSyncReturn wire_hash_blake3_sync(
-    ffi.Pointer<wire_uint_8_list> input,
-  ) {
-    return _wire_hash_blake3_sync(
-      input,
-    );
-  }
-
-  late final _wire_hash_blake3_syncPtr = _lookup<
-      ffi.NativeFunction<
-          WireSyncReturn Function(
-              ffi.Pointer<wire_uint_8_list>)>>('wire_hash_blake3_sync');
-  late final _wire_hash_blake3_sync = _wire_hash_blake3_syncPtr
-      .asFunction<WireSyncReturn Function(ffi.Pointer<wire_uint_8_list>)>();
-
-  void wire_verify_integrity(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> chunk_bytes,
-    int offset,
-    ffi.Pointer<wire_uint_8_list> bao_outboard_bytes,
-    ffi.Pointer<wire_uint_8_list> blake3_hash,
-  ) {
-    return _wire_verify_integrity(
-      port_,
-      chunk_bytes,
-      offset,
-      bao_outboard_bytes,
-      blake3_hash,
-    );
-  }
-
-  late final _wire_verify_integrityPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(
-              ffi.Int64,
-              ffi.Pointer<wire_uint_8_list>,
-              ffi.Uint64,
-              ffi.Pointer<wire_uint_8_list>,
-              ffi.Pointer<wire_uint_8_list>)>>('wire_verify_integrity');
-  late final _wire_verify_integrity = _wire_verify_integrityPtr.asFunction<
-      void Function(int, ffi.Pointer<wire_uint_8_list>, int,
-          ffi.Pointer<wire_uint_8_list>, ffi.Pointer<wire_uint_8_list>)>();
-
-  void wire_hash_bao_file(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> path,
-  ) {
-    return _wire_hash_bao_file(
-      port_,
-      path,
-    );
-  }
-
-  late final _wire_hash_bao_filePtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(
-              ffi.Int64, ffi.Pointer<wire_uint_8_list>)>>('wire_hash_bao_file');
-  late final _wire_hash_bao_file = _wire_hash_bao_filePtr
-      .asFunction<void Function(int, ffi.Pointer<wire_uint_8_list>)>();
-
-  void wire_hash_bao_memory(
-    int port_,
-    ffi.Pointer<wire_uint_8_list> bytes,
-  ) {
-    return _wire_hash_bao_memory(
-      port_,
-      bytes,
-    );
-  }
-
-  late final _wire_hash_bao_memoryPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(ffi.Int64,
-              ffi.Pointer<wire_uint_8_list>)>>('wire_hash_bao_memory');
-  late final _wire_hash_bao_memory = _wire_hash_bao_memoryPtr
-      .asFunction<void Function(int, ffi.Pointer<wire_uint_8_list>)>();
-
-  ffi.Pointer<wire_uint_8_list> new_uint_8_list_0(
-    int len,
-  ) {
-    return _new_uint_8_list_0(
-      len,
-    );
-  }
-
-  late final _new_uint_8_list_0Ptr = _lookup<
-      ffi.NativeFunction<
-          ffi.Pointer<wire_uint_8_list> Function(
-              ffi.Int32)>>('new_uint_8_list_0');
-  late final _new_uint_8_list_0 = _new_uint_8_list_0Ptr
-      .asFunction<ffi.Pointer<wire_uint_8_list> Function(int)>();
-
-  void free_WireSyncReturn(
-    WireSyncReturn ptr,
-  ) {
-    return _free_WireSyncReturn(
-      ptr,
-    );
-  }
-
-  late final _free_WireSyncReturnPtr =
-      _lookup<ffi.NativeFunction<ffi.Void Function(WireSyncReturn)>>(
-          'free_WireSyncReturn');
-  late final _free_WireSyncReturn =
-      _free_WireSyncReturnPtr.asFunction<void Function(WireSyncReturn)>();
-}
-
-final class _Dart_Handle extends ffi.Opaque {}
-
-final class wire_uint_8_list extends ffi.Struct {
-  external ffi.Pointer<ffi.Uint8> ptr;
-
-  @ffi.Int32()
-  external int len;
-}

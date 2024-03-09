@@ -303,10 +303,10 @@ packages:
     dependency: "direct main"
     description:
       name: lib5
-      sha256: cf6654f67ed142049cfc98c14d3bea47d06175fc09ef9541db7a54adc9be85d0
+      sha256: cd3d867a150bb7aacd07cfd23729da75cc2416b9c4099d722e499bfaa392e7b7
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.2.0"
   lints:
     dependency: "direct dev"
     description:
