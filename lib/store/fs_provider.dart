@@ -140,7 +140,7 @@ class FileSystemProviderObjectStore extends ObjectStore {
 
         // CID type directory
         final cid = CID(
-          0x5d,
+          cidTypeMetadataDirectory,
           hash,
           size: dirBytes.length,
         );
@@ -161,7 +161,7 @@ class FileSystemProviderObjectStore extends ObjectStore {
 
         if (path.isEmpty) {
           node.logger.info(
-            '${dir.path}: skyfs://${base64UrlNoPaddingEncode(keyPair.publicKey)}@shared-readonly CID: $cid',
+            '${dir.path}: fs5://${CID(cidTypeMetadataDirectory, Multihash(keyPair.publicKey)).toBase32()}',
           );
         }
       }
