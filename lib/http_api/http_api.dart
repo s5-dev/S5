@@ -895,8 +895,7 @@ class HttpAPIServer {
         final String? domain = node.config['http']?['api']?['domain'];
 
         if (domain != null) {
-          if (uri.host == 'localhost') {
-          } else if (uri.host == domain) {
+          if (uri.host == domain) {
             if (request.uri.path == '/s5/p2p') {
               final socket = await WebSocketTransformer.upgrade(request);
 
@@ -916,6 +915,8 @@ class HttpAPIServer {
           } else if (uri.host == 'docs.$domain') {
             cid = CID.decode('zrjD7xwmgP8U6hquPUtSRcZP1J1LvksSwTq4CPZ2ck96FHu');
             checkAuth = false;
+          } else if ('.${uri.host}'.endsWith('.$domain')) {
+            cid = CID.decode(uri.host.split('.').first);
           } else if (!('.${uri.host}').endsWith('.$domain')) {
             final cidStr = await node.resolveName(uri.host);
             cid = CID.decode(cidStr);
