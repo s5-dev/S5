@@ -302,10 +302,11 @@ packages:
   lib5:
     dependency: "direct main"
     description:
-      name: lib5
-      sha256: cd3d867a150bb7aacd07cfd23729da75cc2416b9c4099d722e499bfaa392e7b7
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: HEAD
+      resolved-ref: "1ac7b21f6a35b489a0743ed522a33fab2d3c51a6"
+      url: "https://github.com/s5-dev/lib5.git"
+    source: git
     version: "0.2.0"
   lints:
     dependency: "direct dev"
