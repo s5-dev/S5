@@ -27,7 +27,6 @@ A basic config file is generated for you, just make sure the path to the directo
 
 Or run it with docker compose
 ```docker
-version: '3'
 services:
   s5-node:
     image: ghcr.io/s5-dev/node:latest
