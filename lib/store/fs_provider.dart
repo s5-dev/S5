@@ -46,7 +46,6 @@ class FileSystemProviderObjectStore extends ObjectStore {
             details: DirectoryMetadataDetails({}),
             directories: {},
             files: {},
-            extraMetadata: ExtraMetadata({}),
           );
         }
       }
