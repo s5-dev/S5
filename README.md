@@ -27,12 +27,13 @@ A basic config file is generated for you, just make sure the path to the directo
 
 Or run it with docker compose
 ```docker
-version: '3'
 services:
   s5-node:
     image: ghcr.io/s5-dev/node:latest
     volumes:
-      - /local/path/to/config:/config
+      - ./config:/config
+      - ./db:/db # optional
+      - /tmp/s5:/cache # optional
     ports:
       - "5050:5050"
     restart: unless-stopped
