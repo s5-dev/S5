@@ -1,16 +1,14 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:lib5/util.dart';
 import 'package:s5_server/crypto/implementation.dart';
+import 'package:s5_server/rust/frb_generated.dart';
 import 'package:tint/tint.dart';
 import 'package:toml/toml.dart';
 
 import 'package:s5_server/constants.dart';
 import 'package:s5_server/node.dart';
 import 'package:s5_server/logger/console.dart';
-
-import 'ffi.io.dart';
 
 void main(List<String> arguments) async {
   final isDocker = Platform.environment['DOCKER'] == 'TRUE';
@@ -26,16 +24,12 @@ void main(List<String> arguments) async {
     exit(1);
   }
 
-  final rust = initializeExternalLibrary(
-    isDocker
-        ? '/app/librust.so'
-        : (Platform.isWindows ? './rust.dll' : './librust.so'),
-  );
-  final crypto = RustCryptoImplementation(rust);
+  await RustLib.init();
+  final crypto = RustCryptoImplementation();
 
   final file = File(arguments[0]);
   if (!file.existsSync()) {
-    final seed = crypto.generateRandomBytes(32);
+    final seed = crypto.generateSecureRandomBytes(32);
     file.createSync(recursive: true);
     file.writeAsStringSync(
       (isDocker ? defaultConfigDocker : defaultConfig).replaceFirst(
@@ -58,16 +52,9 @@ void main(List<String> arguments) async {
   final node = S5Node(
     config: config,
     logger: logger,
-    rust: rust,
     crypto: crypto,
   );
-
-  runZonedGuarded(
-    node.start,
-    (e, st) {
-      logger.catched(e, st);
-    },
-  );
+  return node.start();
 }
 
 const defaultConfig =

@@ -6,7 +6,6 @@ import 'package:minio/minio.dart';
 import 'package:s5_server/node.dart';
 
 import 'base.dart';
-import 'fs_provider.dart';
 import 'ipfs.dart';
 import 'local.dart';
 import 'pixeldrain.dart';
@@ -103,7 +102,7 @@ Map<String, ObjectStore> createStoresFromConfig(
     } */
 
   if (fileSystemConfig != null) {
-    stores['fs'] = FileSystemProviderObjectStore(
+/*     stores['fs'] = FileSystemProviderObjectStore(
       node,
       localDirectories: [
         for (final path in fileSystemConfig['directories']) Directory(path),
@@ -112,7 +111,7 @@ Map<String, ObjectStore> createStoresFromConfig(
       httpBind: fileSystemConfig['httpBind'] ?? '0.0.0.0',
       externalDownloadUrl:
           fileSystemConfig['externalDownloadUrl'] ?? 'http://localhost:23432',
-    );
+    ); */
   }
 
   if (siaConfig != null) {

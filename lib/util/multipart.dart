@@ -12,7 +12,7 @@
 ///
 /// The [ReadMultipartRequest] extensions can be used to check whether a request
 /// is a multipart request and to extract the individual parts.
-library shelf_multipart;
+library;
 
 import 'dart:async';
 import 'dart:convert';
@@ -66,7 +66,7 @@ extension ReadMultipartRequest on HttpRequest {
 
     return MimeMultipartTransformer(boundary)
         .bind(this)
-        .map((part) => Multipart(this, part));
+        .map((part) => Multipart(part));
   }
 
   /// Extracts the `boundary` parameter from the content-type header, if this is
@@ -83,7 +83,6 @@ extension ReadMultipartRequest on HttpRequest {
 
 /// An entry in a multipart request.
 class Multipart extends MimeMultipart {
-  final HttpRequest _originalRequest;
   final MimeMultipart _inner;
 
   @override
@@ -98,8 +97,7 @@ class Multipart extends MimeMultipart {
     return Encoding.getByName(contentType.parameters['charset']);
   }
 
-  Multipart(this._originalRequest, this._inner)
-      : headers = CaseInsensitiveMap.from(_inner.headers);
+  Multipart(this._inner) : headers = CaseInsensitiveMap.from(_inner.headers);
 
   MediaType? _parseContentType() {
     final value = headers['content-type'];

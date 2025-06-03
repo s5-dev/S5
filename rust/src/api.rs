@@ -1,10 +1,8 @@
 use blake3::Hash;
-
 use chacha20poly1305::{
-    aead::{generic_array::GenericArray, Aead, KeyInit},
     XChaCha20Poly1305, XNonce,
+    aead::{Aead, KeyInit, generic_array::GenericArray},
 };
-use flutter_rust_bridge::{support::from_vec_to_array, SyncReturn};
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom, Write};
 
@@ -30,7 +28,6 @@ pub fn decrypt_xchacha20poly1305(
     let plaintext = cipher.decrypt(&xnonce, &ciphertext[..]);
     Ok(plaintext.unwrap())
 }
-
 fn blake3_digest<R: Read>(mut reader: R) -> anyhow::Result<Hash> {
     let mut hasher = blake3::Hasher::new();
 
@@ -60,16 +57,17 @@ pub fn hash_blake3(input: Vec<u8>) -> anyhow::Result<Vec<u8>> {
     Ok(digest.as_bytes().to_vec())
 }
 
-pub fn hash_blake3_sync(input: Vec<u8>) -> SyncReturn<Vec<u8>> {
+#[flutter_rust_bridge::frb(sync)]
+pub fn hash_blake3_sync(input: Vec<u8>) -> Vec<u8> {
     let digest = blake3::hash(&input);
-    SyncReturn(digest.as_bytes().to_vec())
+    digest.as_bytes().to_vec()
 }
 
 pub fn verify_integrity(
     chunk_bytes: Vec<u8>,
     offset: u64,
     bao_outboard_bytes: Vec<u8>,
-    blake3_hash: Vec<u8>,
+    blake3_hash: [u8; 32],
 ) -> anyhow::Result<u8> {
     let mut slice_stream = abao::encode::SliceExtractor::new_outboard(
         FakeSeeker::new(&chunk_bytes[..]),
@@ -80,7 +78,7 @@ pub fn verify_integrity(
 
     let mut decode_stream = abao::decode::SliceDecoder::new(
         &mut slice_stream,
-        &abao::Hash::from(from_vec_to_array(blake3_hash)),
+        &abao::Hash::from(blake3_hash),
         offset,
         262144,
     );

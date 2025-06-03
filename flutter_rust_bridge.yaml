@@ -1,0 +1,6 @@
+rust_root: rust/
+rust_input: crate::api
+dart_output: lib/rust
+c_output: frb_generated.h
+dump_all: true
+local: true

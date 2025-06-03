@@ -1,4 +1,4 @@
-FROM dart:latest AS builder
+FROM dart:stable AS builder
 
 # Get dependencies
 RUN \

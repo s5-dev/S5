@@ -1,33 +1,25 @@
-use lib_flutter_rust_bridge_codegen::{
-    config_parse, frb_codegen, get_symbols_if_no_duplicates, RawOpts,
-};
-
-/// Path of input Rust code
-const RUST_INPUT: &str = "src/api.rs";
-/// Path of output generated Dart code
-const DART_OUTPUT: &str = "../lib/rust/bridge_generated.dart";
+use lib_flutter_rust_bridge_codegen::codegen;
+use lib_flutter_rust_bridge_codegen::codegen::Config;
+use lib_flutter_rust_bridge_codegen::utils::logs::configure_opinionated_logging;
 
 fn main() {
-    // Tell Cargo that if the input Rust code changes, to rerun this build script.
-    println!("cargo:rerun-if-changed={}", RUST_INPUT);
-    // Options for frb_codegen
-    let raw_opts = RawOpts {
-        // Path of input Rust code
-        rust_input: vec![RUST_INPUT.to_string()],
-        // Path of output generated Dart code
-        dart_output: vec![DART_OUTPUT.to_string()],
-        wasm: true,
-        dart_decl_output: Some("../lib/rust/bridge_definitions.dart".into()),
-        dart_format_line_length: 120,
-        // for other options use defaults
-        ..Default::default()
-    };
-    // get opts from raw opts
-    let configs = config_parse(raw_opts);
+    // Uncomment the line below, if you only want to generate bindings on api directory change.
+    //
+    // NOTE: This accelerates the build process, but you will need to manually trigger binding
+    // generation whenever there are changes to definitions outside of the api directory that it
+    // depends on.
+    //
+    // println!("cargo:rerun-if-changed=src/api");
 
-    // generation of rust api for ffi
-    let all_symbols = get_symbols_if_no_duplicates(&configs).unwrap();
-    for config in configs.iter() {
-        frb_codegen(config, &all_symbols).unwrap();
-    }
+    // If you want to see logs
+    // Alternatively, use `cargo build -vvv` (instead of `cargo build`) to see logs on screen
+    configure_opinionated_logging("./logs/", true).unwrap();
+
+    // Execute code generator with auto-detected config
+    codegen::generate(
+        Config::from_config_file("../flutter_rust_bridge.yaml")
+            .unwrap()
+            .unwrap(),
+        Default::default(),
+    ).unwrap()
 }

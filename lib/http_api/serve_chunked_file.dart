@@ -138,7 +138,7 @@ Future handleChunkedFile(
       res.headers.add('content-length', len.toString());
       res.headers.add(
         'content-range',
-        'bytes ' + item.toContentRange(totalSize),
+        'bytes ${item.toContentRange(totalSize)}',
       );
       await res.addStream(stream);
       completer.complete();

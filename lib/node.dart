@@ -16,12 +16,12 @@ import 'package:lib5/constants.dart';
 import 'package:lib5/lib5.dart';
 import 'package:lib5/node.dart';
 import 'package:lib5/util.dart';
+import 'package:s5_server/rust/api.dart';
 
 import 'accounts/account.dart';
 import 'constants.dart';
 import 'db/hive_key_value_db.dart';
 import 'http_api/http_api.dart';
-import 'rust/bridge_definitions.dart';
 import 'service/accounts.dart';
 import 'service/cache_cleaner.dart';
 import 'service/p2p.dart';
@@ -29,14 +29,14 @@ import 'store/create.dart';
 import 'store/merge.dart';
 
 class S5Node extends S5NodeBase {
-  final Rust rust;
-
   S5Node({
     required super.config,
     required super.logger,
     required super.crypto,
-    required this.rust,
-  });
+  }) {
+    maxMemoryUploadSizeMB =
+        config['http']?['api']?['maxMemoryUploadSizeMB'] ?? 34;
+  }
 
   late final String cachePath;
 
@@ -44,6 +44,7 @@ class S5Node extends S5NodeBase {
 
   ObjectStore? store;
   late bool exposeStore;
+  late final int maxMemoryUploadSizeMB;
 
   AccountsService? accounts;
 
@@ -155,7 +156,7 @@ class S5Node extends S5NodeBase {
       ));
       registry.setEntryHelper(
         p2p.nodeKeyPair,
-        cid.toRegistryEntry(),
+        cid.hash.fullBytes,
       );
     });
   }
@@ -191,15 +192,15 @@ class S5Node extends S5NodeBase {
             .get(Uri.parse(dlUri.location.bytesUrl))
             .timeout(Duration(seconds: 30)); // TODO Adjust timeout
 
-        if (hash.functionType == cidTypeBridge) {
+        if (hash.type == cidTypeBridge) {
           if (res.statusCode != 200) {
             throw 'HTTP ${res.statusCode}: ${res.body} for ${dlUri.location.bytesUrl}';
           }
           // TODO Have list of trusted Node IDs here, already filter them BEFORE EVEN DOWNLOADING
         } else {
-          final resHash = await rust.hashBlake3(input: res.bodyBytes);
+          final resHash = await hashBlake3(input: res.bodyBytes);
 
-          if (!areBytesEqual(hash.hashBytes, resHash)) {
+          if (!areBytesEqual(hash.value, resHash)) {
             throw 'Integrity verification failed';
           }
           dlUriProvider.upvote(dlUri);
@@ -363,7 +364,7 @@ class S5Node extends S5NodeBase {
       join(
         cachePath,
         'download',
-        Multihash(crypto.generateRandomBytes(32)).toBase32(),
+        Multihash(crypto.generateSecureRandomBytes(32)).toBase32(),
         'file',
       ),
     );
@@ -457,7 +458,7 @@ class S5Node extends S5NodeBase {
         throw CancelledException();
       }
 
-      final b3hash = await rust.hashBlake3File(path: outputFile.path);
+      final b3hash = await hashBlake3File(path: outputFile.path);
       final localFileHash =
           Multihash(Uint8List.fromList([mhashBlake3Default] + b3hash));
 
@@ -471,18 +472,18 @@ class S5Node extends S5NodeBase {
 
         throw CancelledException();
       }
-    } catch (e, st) {
+    } catch (e) {
       rethrow;
     }
   }
 
   @override
   Future<CID> uploadRawFile(Uint8List data) async {
-    if (data.length > 32 * 1024 * 1024) {
-      throw 'This API only supports a maximum size of 32 MiB';
+    if (data.length > maxMemoryUploadSizeMB * 1000 * 1000) {
+      throw 'This API only supports a maximum size of $maxMemoryUploadSizeMB MB';
     }
 
-    final baoResult = await rust.hashBaoMemory(
+    final baoResult = await hashBaoMemory(
       bytes: data,
     );
 
@@ -551,7 +552,7 @@ class S5Node extends S5NodeBase {
 
     final size = file.lengthSync();
 
-    final baoResult = await rust.hashBaoFile(
+    final baoResult = await hashBaoFile(
       path: file.path,
     );
     final hash = Multihash(
@@ -660,7 +661,7 @@ class S5Node extends S5NodeBase {
 
     final cid = await uploadRawFile(p.takeBytes());
 
-    return CID(cidTypeMetadataWebApp, cid.hash);
+    return CID(cidTypeMetadataDirectory, cid.hash);
   }
 
   void _copyTo(Uint8List list, int offset, Uint8List input) {

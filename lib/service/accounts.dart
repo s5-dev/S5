@@ -210,7 +210,7 @@ class AccountsService {
         if (auth.denied) return res.unauthorized(auth);
 
         final String pubKey = req.uri.queryParameters['pubKey']!;
-        final challenge = crypto.generateRandomBytes(32);
+        final challenge = crypto.generateSecureRandomBytes(32);
 
         registerChallenges[pubKey] = challenge;
 
@@ -254,7 +254,7 @@ class AccountsService {
       final signature = base64UrlNoPaddingDecode(data['signature']);
 
       final isValid = await crypto.verifyEd25519(
-        pk: pubKey.sublist(1),
+        publicKey: pubKey.sublist(1),
         message: response,
         signature: signature,
       );
@@ -273,6 +273,7 @@ class AccountsService {
       final token = await createAuthTokenForAccount(id, data['label']!);
 
       setSetCookieHeader(res, token, req.requestedUri.authority);
+      return {'authToken': token};
     });
 
     final loginChallenges = <String, Uint8List>{};
@@ -284,7 +285,7 @@ class AccountsService {
         if (auth.denied) return res.unauthorized(auth);
 
         final String pubKey = req.uri.queryParameters['pubKey']!;
-        final challenge = crypto.generateRandomBytes(32);
+        final challenge = crypto.generateSecureRandomBytes(32);
 
         loginChallenges[pubKey] = challenge;
         return {
@@ -325,7 +326,7 @@ class AccountsService {
       final signature = base64UrlNoPaddingDecode(data['signature']);
 
       final isValid = await crypto.verifyEd25519(
-        pk: pubKey.sublist(1),
+        publicKey: pubKey.sublist(1),
         message: response,
         signature: signature,
       );
@@ -349,6 +350,7 @@ class AccountsService {
       );
 
       setSetCookieHeader(res, token, req.requestedUri.authority);
+      return {'authToken': token};
     });
 
     app.get('/s5/account', (req, res) async {
@@ -620,7 +622,7 @@ WHERE ID = (
   }
 
   Future<String> createAuthTokenForAccount(int accountId, String label) async {
-    final token = crypto.generateRandomBytes(32);
+    final token = crypto.generateSecureRandomBytes(32);
 
     final authToken = 'S5A' + base58BitcoinEncode(token);
 

@@ -13,6 +13,7 @@ import 'package:lib5/util.dart';
 import 'package:path/path.dart';
 
 import 'package:s5_server/node.dart';
+import 'package:s5_server/rust/api.dart';
 
 final httpClient = Client();
 
@@ -69,7 +70,7 @@ Stream<List<int>> openRead({
 
     final blake3Hash = await node.crypto.hashBlake3(res.bodyBytes);
 
-    final isValid = areBytesEqual(hash.hashBytes, blake3Hash);
+    final isValid = areBytesEqual(hash.value, blake3Hash);
 
     if (isValid != true) {
       throw 'File integrity check failed (BLAKE3)';
@@ -263,7 +264,8 @@ Stream<List<int>> openRead({
 
               if (endPos < (startByte + chunkSize)) {
                 if ((startByte + chunkSize) > totalSize) {
-                  final end = min(totalEncSize, encStartByte + encChunkSize * 64);
+                  final end =
+                      min(totalEncSize, encStartByte + encChunkSize * 64);
                   rangeHeader = 'bytes=$encStartByte-${end - 1}';
                 } else {
                   rangeHeader =
@@ -288,7 +290,8 @@ Stream<List<int>> openRead({
                     encChunkSize * (downloadUntilChunkExclusive - chunk);
 
                 if ((encStartByte + length) > totalSize) {
-                  final end = min(totalEncSize, encStartByte + encChunkSize * 64);
+                  final end =
+                      min(totalEncSize, encStartByte + encChunkSize * 64);
                   rangeHeader = 'bytes=$encStartByte-${end - 1}';
                 } else {
                   rangeHeader =
@@ -348,12 +351,12 @@ Stream<List<int>> openRead({
                     0, chunkBytes.length - encryptionMetadata.padding);
               }
             } else {
-              final integrityRes = await node.rust.verifyIntegrity(
+              final integrityRes = await verifyIntegrity(
                 chunkBytes: chunkBytes,
-                offset: chunk * chunkSize,
+                offset: BigInt.from(chunk * chunkSize),
                 baoOutboardBytes: baoOutboardBytesCache[
                     storageLocation.location.outboardBytesUrl]!,
-                blake3Hash: hash.hashBytes,
+                blake3Hash: U8Array32(hash.value),
               );
 
               if (integrityRes != 1) {

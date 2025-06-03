@@ -12,7 +12,7 @@ class Account {
     required this.isRestricted,
     required this.tier,
   });
-  toJson() => {
+  Map toJson() => {
         'id': id,
         'createdAt': createdAt,
         'email': email,

@@ -5,9 +5,12 @@ import 'dart:typed_data';
 
 import 'package:alfred/alfred.dart';
 import 'package:base_codecs/base_codecs.dart';
+import 'package:filesize/filesize.dart';
 import 'package:http/http.dart';
 import 'package:lib5/constants.dart';
+import 'package:lib5/identifiers.dart';
 import 'package:lib5/lib5.dart';
+import 'package:lib5/fs.dart';
 import 'package:lib5/node.dart';
 import 'package:lib5/util.dart';
 import 'package:mime/mime.dart';
@@ -342,7 +345,7 @@ class HttpAPIServer {
       }).firstWhere((element) => element[0] == 'hash')[1];
 
       final uploadId = base58BitcoinEncode(
-        node.crypto.generateRandomBytes(32),
+        node.crypto.generateSecureRandomBytes(32),
       );
 
       final mhash =
@@ -503,7 +506,7 @@ class HttpAPIServer {
 
       final cid = CID.decode(cidStr);
 
-      if (cid.type == cidTypeMetadataWebApp || cid.type == cidTypeResolver) {
+      if (cid.type == cidTypeMetadataDirectory) {
         final base32cid = cid.toBase32();
         final requestedUri = req.requestedUri;
         await res.redirect(
@@ -596,9 +599,6 @@ class HttpAPIServer {
 
       if (cid.type == cidTypeRaw) {
         throw 'Raw CIDs do not have metadata';
-      } else if (cid.type == cidTypeResolver) {
-        // TODO Support resolver CIDs
-        throw 'This endpoint does not support resolver CIDs yet';
       }
 
       final metadata = await node.downloadMetadata(cid);
@@ -782,7 +782,7 @@ class HttpAPIServer {
       final signature = base64UrlNoPaddingDecode(map['signature']!);
 
       await node.registry.set(
-        SignedRegistryEntry(
+        RegistryEntry(
           pk: pk,
           revision: revision,
           data: bytes,
