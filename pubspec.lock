@@ -14,7 +14,7 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: "7c830985979b4d79ee44ed514cddf67cc5132fe3"
+      resolved-ref: "5b36d824b42f257fd2dc11cadd8ba0925cac0ef4"
       url: "https://github.com/redsolver/alfred.git"
     source: git
     version: "1.1.1"
